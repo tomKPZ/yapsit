@@ -8,13 +8,16 @@ from matplotlib import image
 
 URL = "https://pokemondb.net/sprites"
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-SPRITES_DIR = os.path.join(SCRIPT_DIR, "sprites", "pokemon-gen8", "regular")
+SPRITES_DIR = os.path.join(SCRIPT_DIR, "sprites", "pokemon-gen7x", "regular")
 POKEMON_JSON = os.path.join(SCRIPT_DIR, "sprites", "data", "pokemon.json")
 
 pokemon = json.loads(open(POKEMON_JSON).read())
 for p in pokemon.values():
     name = p["slug"]["eng"]
-    sprite = image.imread(os.path.join(SPRITES_DIR, name + ".png"))
+    fname = os.path.join(SPRITES_DIR, name + ".png")
+    if not os.path.isfile(fname):
+        continue
+    sprite = image.imread(fname)
 
     n, m, _ = sprite.shape
     inf = float("inf")
