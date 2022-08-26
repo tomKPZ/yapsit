@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 
 import collections
-import json
 import os
 
 from matplotlib import image
 
 URL = "https://pokemondb.net/sprites"
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-SPRITES_DIR = os.path.join(SCRIPT_DIR, "pokesprite", "pokemon-gen7x", "regular")
-POKEMON_JSON = os.path.join(SCRIPT_DIR, "pokesprite", "data", "pokemon.json")
+SPRITES_DIR = os.path.join(SCRIPT_DIR, "pokesprite", "icons", "pokemon", "regular")
 
-pokemon = json.loads(open(POKEMON_JSON).read())
-for p in pokemon.values():
-    name = p["slug"]["eng"]
-    fname = os.path.join(SPRITES_DIR, name + ".png")
+for p in os.listdir(SPRITES_DIR):
+    fname = os.path.join(SPRITES_DIR, p)
     if not os.path.isfile(fname):
         continue
     sprite = image.imread(fname)
