@@ -11,7 +11,7 @@ SPRITES_DIR = os.path.join(SCRIPT_DIR, "pokesprite", "icons", "pokemon", "regula
 
 for p in os.listdir(SPRITES_DIR):
     fname = os.path.join(SPRITES_DIR, p)
-    if not os.path.isfile(fname):
+    if "-" in p or not os.path.isfile(fname):
         continue
     sprite = image.imread(fname)
 
