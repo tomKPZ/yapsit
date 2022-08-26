@@ -1,9 +1,9 @@
 pokesprite: pokesprite.c pokemon.h
 	gcc -O2 -Wall -Wextra -Werror pokesprite.c -o pokesprite
-	strip pokesprite
 
 pokemon.h: gen_header.py
-	python3 gen_header.py > pokemon.h
+	python3 gen_header.py > pokemon.h.bak
+	mv pokemon.h.bak pokemon.h
 
 .PHONY: clean
 clean:

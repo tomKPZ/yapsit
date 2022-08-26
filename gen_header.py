@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
 
 import collections
-import concurrent.futures
-import io
+import json
+import os
 
-import bs4
-import requests
 from matplotlib import image
 
 URL = "https://pokemondb.net/sprites"
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+SPRITES_DIR = os.path.join(SCRIPT_DIR, "sprites", "pokemon-gen8", "regular")
+POKEMON_JSON = os.path.join(SCRIPT_DIR, "sprites", "data", "pokemon.json")
 
-
-page = bs4.BeautifulSoup(requests.get(URL).text, "html.parser")
-mons = []
-with concurrent.futures.ThreadPoolExecutor() as executor:
-    for gen in page.select(".infocard-list"):
-        for pokemon in gen.select(".infocard"):
-            name = pokemon.text.strip()
-            src = pokemon.find("span").get("data-src")
-            if src.endswith("/s.png"):
-                continue
-            future = executor.submit(lambda src: requests.get(src).content, src)
-            mons.append(future)
-for pokemon in mons:
-    sprite = image.imread(io.BytesIO(pokemon.result()))
+pokemon = json.loads(open(POKEMON_JSON).read())
+for p in pokemon.values():
+    name = p["slug"]["eng"]
+    sprite = image.imread(os.path.join(SPRITES_DIR, name + ".png"))
 
     n, m, _ = sprite.shape
     inf = float("inf")
