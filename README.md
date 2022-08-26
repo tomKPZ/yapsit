@@ -1,2 +1,2 @@
-# pokesprite
-Show a random Pokémon in your terminal
+# yapsit
+Yet Another Pokémon Sprite In your Terminal

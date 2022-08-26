@@ -1,5 +1,6 @@
 pokemon.h
-pokesprite
+yapsit
+*.bak
 
 # Prerequisites
 *.d
