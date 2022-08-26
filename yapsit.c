@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/auxv.h>
 #include <sys/ioctl.h>
-#include <time.h>
 #include <unistd.h>
 
 struct Sprite {
@@ -18,7 +18,7 @@ struct Sprite {
 const size_t n_sprites = sizeof(sprites) / sizeof(sprites[0]);
 
 int main() {
-  srand(clock() ^ time(NULL));
+  srand(*(unsigned int *)getauxval(AT_RANDOM));
 
   struct winsize w;
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
