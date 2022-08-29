@@ -18,13 +18,32 @@ SPRITES_DIR = os.path.join(
     "generation-iii",
     "emerald",
 )
+SHINY_DIR = os.path.join(SPRITES_DIR, "shiny")
 FNAME_PAT = re.compile(r"\d{1,3}.png")
+
+
+def create_colormap(sprite):
+    colormap = collections.OrderedDict()
+    n, m, _ = sprite.shape
+    for y in range(m):
+        for x in range(n):
+            r, g, b, a = (round(v * 255) for v in sprite[y][x])
+            if a != 0 and (r, g, b) not in colormap:
+                colormap[(r, g, b)] = len(colormap) + 1
+    return colormap
+
 
 for p in os.listdir(SPRITES_DIR):
     fname = os.path.join(SPRITES_DIR, p)
     if not FNAME_PAT.match(os.path.basename(fname)):
         continue
     sprite = image.imread(fname)
+    shiny = image.imread(os.path.join(SHINY_DIR, p))
+
+    colormap = create_colormap(sprite)
+    if len(colormap) > 15:
+        print("Excess colors in sprite " + fname, file=sys.stderr)
+        continue
 
     n, m, _ = sprite.shape
     inf = float("inf")
@@ -37,7 +56,6 @@ for p in os.listdir(SPRITES_DIR):
                 xh = max(xh, x)
                 yh = max(yh, y)
 
-    colormap = collections.OrderedDict()
     w = xh - xl + 1
     h = yh - yl + 1
     print("{%d,%d,(uint8_t[]){" % (w, h), end="")
@@ -47,13 +65,7 @@ for p in os.listdir(SPRITES_DIR):
             r, g, b, a = (round(v * 255) for v in sprite[y][x])
             if a == 0:
                 color = 0
-            elif (r, g, b) in colormap:
-                color = colormap[(r, g, b)]
-            elif len(colormap) == 15:
-                print("Invalid color in sprite " + fname, file=sys.stderr)
-                color = 0
             else:
-                colormap[(r, g, b)] = len(colormap) + 1
                 color = colormap[(r, g, b)]
             if startb:
                 print("0x%X" % color, end="")
