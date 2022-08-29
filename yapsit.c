@@ -13,7 +13,7 @@ struct Sprite {
   unsigned int w;
   unsigned int h;
   const uint8_t *image;
-  const uint8_t *colormap[3];
+  const uint8_t colormap[15][3];
 } const sprites[] = {
 #include "pokemon.h"
 };
@@ -51,14 +51,14 @@ int main() {
       uint8_t l = pixel(sprite, x, y + 1);
       uint8_t rh, gh, bh, rl, gl, bl;
       if (h) {
-        rh = sprite->colormap[0][h - 1];
-        gh = sprite->colormap[1][h - 1];
-        bh = sprite->colormap[2][h - 1];
+        rh = sprite->colormap[h - 1][0];
+        gh = sprite->colormap[h - 1][1];
+        bh = sprite->colormap[h - 1][2];
       }
       if (l) {
-        rl = sprite->colormap[0][l - 1];
-        gl = sprite->colormap[1][l - 1];
-        bl = sprite->colormap[2][l - 1];
+        rl = sprite->colormap[l - 1][0];
+        gl = sprite->colormap[l - 1][1];
+        bl = sprite->colormap[l - 1][2];
       }
       if (h && l)
         printf(BG FG "▄", rh, gh, bh, rl, gl, bl);

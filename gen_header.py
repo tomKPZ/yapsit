@@ -49,21 +49,18 @@ for p in os.listdir(SPRITES_DIR):
                 color = 0
             elif (r, g, b) in colormap:
                 color = colormap[(r, g, b)]
+            elif len(colormap) == 15:
+                print("Invalid color in sprite " + fname, file=sys.stderr)
+                color = 0
             else:
                 colormap[(r, g, b)] = len(colormap) + 1
                 color = colormap[(r, g, b)]
-            if color > 15:
-                print("Invalid color in sprite " + fname, file=sys.stderr)
-                color = 0
             if startb:
                 print("0x%X" % color, end="")
             else:
                 print("%X," % color, end="")
             startb = not startb
     print("},{")
-    for channel in range(3):
-        print("(uint8_t[]){")
-        for color in colormap:
-            print("0x%02X," % color[channel], end="")
-        print("},")
+    for color in colormap:
+        print("{%s}," % ",".join("0x%02X" % c for c in color), end="")
     print("}},")
