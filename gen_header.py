@@ -5,7 +5,7 @@ import os
 import re
 import sys
 
-from matplotlib import image
+import PIL.Image
 
 URL = "https://pokemondb.net/sprites"
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -24,10 +24,10 @@ FNAME_PAT = re.compile(r"\d{1,3}.png")
 
 def create_colormap(sprite):
     colormap = collections.OrderedDict()
-    n, m, _ = sprite.shape
+    n, m = sprite.size
     for y in range(m):
         for x in range(n):
-            r, g, b, a = (round(v * 255) for v in sprite[y][x])
+            r, g, b, a = sprite.getpixel((x, y))
             if a != 0 and (r, g, b) not in colormap:
                 colormap[(r, g, b)] = len(colormap) + 1
     return colormap
@@ -35,22 +35,22 @@ def create_colormap(sprite):
 
 for p in os.listdir(SPRITES_DIR):
     fname = os.path.join(SPRITES_DIR, p)
-    if not FNAME_PAT.match(os.path.basename(fname)):
+    if not FNAME_PAT.match(p):
         continue
-    sprite = image.imread(fname)
-    shiny = image.imread(os.path.join(SHINY_DIR, p))
+    sprite = PIL.Image.open(fname).convert("RGBA")
+    shiny = PIL.Image.open(os.path.join(SHINY_DIR, p)).convert("RGBA")
 
     colormap = create_colormap(sprite)
     if len(colormap) > 15:
         print("Excess colors in sprite " + fname, file=sys.stderr)
         continue
 
-    n, m, _ = sprite.shape
+    n, m = sprite.size
     inf = float("inf")
     xl, yl, xh, yh = inf, inf, -inf, -inf
     for y in range(n):
         for x in range(m):
-            if sprite[y][x][3]:
+            if sprite.getpixel((x, y))[3]:
                 xl = min(xl, x)
                 yl = min(yl, y)
                 xh = max(xh, x)
@@ -62,7 +62,7 @@ for p in os.listdir(SPRITES_DIR):
     startb = True
     for y in range(yl, yh + 1):
         for x in range(xl, xh + 1):
-            r, g, b, a = (round(v * 255) for v in sprite[y][x])
+            r, g, b, a = sprite.getpixel((x, y))
             if a == 0:
                 color = 0
             else:
