@@ -75,4 +75,7 @@ for p in os.listdir(SPRITES_DIR):
     print("},{")
     for color in colormap:
         print("{%s}," % ",".join("0x%02X" % c for c in color), end="")
+    print("},{")
+    for color in create_colormap(shiny):
+        print("{%s}," % ",".join("0x%02X" % c for c in color), end="")
     print("}},")

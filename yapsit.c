@@ -14,6 +14,7 @@ struct Sprite {
   unsigned int h;
   const uint8_t *image;
   const uint8_t colormap[15][3];
+  const uint8_t shiny[15][3];
 } const sprites[] = {
 #include "pokemon.h"
 };
@@ -45,20 +46,23 @@ int main() {
   if (!sprite)
     return 0;
 
+  const uint8_t(*colormap)[3] =
+      rand() % 16 == 0 ? sprite->shiny : sprite->colormap;
+
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
       uint8_t h = pixel(sprite, x, y);
       uint8_t l = pixel(sprite, x, y + 1);
       uint8_t rh, gh, bh, rl, gl, bl;
       if (h) {
-        rh = sprite->colormap[h - 1][0];
-        gh = sprite->colormap[h - 1][1];
-        bh = sprite->colormap[h - 1][2];
+        rh = colormap[h - 1][0];
+        gh = colormap[h - 1][1];
+        bh = colormap[h - 1][2];
       }
       if (l) {
-        rl = sprite->colormap[l - 1][0];
-        gl = sprite->colormap[l - 1][1];
-        bl = sprite->colormap[l - 1][2];
+        rl = colormap[l - 1][0];
+        gl = colormap[l - 1][1];
+        bl = colormap[l - 1][2];
       }
       if (h && l)
         printf(BG FG "▄", rh, gh, bh, rl, gl, bl);
