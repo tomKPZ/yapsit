@@ -2,16 +2,26 @@
 
 import collections
 import os
+import re
 
 from matplotlib import image
 
 URL = "https://pokemondb.net/sprites"
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-SPRITES_DIR = os.path.join(SCRIPT_DIR, "pokesprite", "icons", "pokemon", "regular")
+SPRITES_DIR = os.path.join(
+    SCRIPT_DIR,
+    "sprites",
+    "sprites",
+    "pokemon",
+    "versions",
+    "generation-iii",
+    "emerald",
+)
+FNAME_PAT = re.compile(r"\d{1,3}.png")
 
 for p in os.listdir(SPRITES_DIR):
     fname = os.path.join(SPRITES_DIR, p)
-    if "-" in p or not os.path.isfile(fname):
+    if not FNAME_PAT.match(os.path.basename(fname)):
         continue
     sprite = image.imread(fname)
 
