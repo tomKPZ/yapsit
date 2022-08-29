@@ -45,23 +45,11 @@ for p in os.listdir(SPRITES_DIR):
         print("Excess colors in sprite " + fname, file=sys.stderr)
         continue
 
-    n, m = sprite.size
-    inf = float("inf")
-    xl, yl, xh, yh = inf, inf, -inf, -inf
-    for y in range(n):
-        for x in range(m):
-            if sprite.getpixel((x, y))[3]:
-                xl = min(xl, x)
-                yl = min(yl, y)
-                xh = max(xh, x)
-                yh = max(yh, y)
-
-    w = xh - xl + 1
-    h = yh - yl + 1
-    print("{%d,%d,(uint8_t[]){" % (w, h), end="")
+    xl, yl, xh, yh = sprite.getbbox()
+    print("{%d,%d,(uint8_t[]){" % (xh - xl, yh - yl), end="")
     startb = True
-    for y in range(yl, yh + 1):
-        for x in range(xl, xh + 1):
+    for y in range(yl, yh):
+        for x in range(xl, xh):
             r, g, b, a = sprite.getpixel((x, y))
             if a == 0:
                 color = 0
