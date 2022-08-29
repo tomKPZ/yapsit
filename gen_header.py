@@ -3,6 +3,7 @@
 import collections
 import os
 import re
+import sys
 
 from matplotlib import image
 
@@ -40,6 +41,7 @@ for p in os.listdir(SPRITES_DIR):
     w = xh - xl + 1
     h = yh - yl + 1
     print("{%d,%d,(uint8_t[]){" % (w, h), end="")
+    startb = True
     for y in range(yl, yh + 1):
         for x in range(xl, xh + 1):
             r, g, b, a = (round(v * 255) for v in sprite[y][x])
@@ -50,7 +52,14 @@ for p in os.listdir(SPRITES_DIR):
             else:
                 colormap[(r, g, b)] = len(colormap) + 1
                 color = colormap[(r, g, b)]
-            print("%d," % color, end="")
+            if color > 15:
+                print("Invalid color in sprite " + fname, file=sys.stderr)
+                color = 0
+            if startb:
+                print("0x%X" % color, end="")
+            else:
+                print("%X," % color, end="")
+            startb = not startb
     print("},{")
     for channel in range(3):
         print("(uint8_t[]){")

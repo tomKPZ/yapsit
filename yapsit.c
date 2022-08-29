@@ -20,6 +20,14 @@ struct Sprite {
 
 const size_t n_sprites = sizeof(sprites) / sizeof(sprites[0]);
 
+uint8_t pixel(const struct Sprite *sprite, size_t x, size_t y) {
+  size_t i = y * sprite->w + x;
+  if (i >= sprite->w * sprite->h)
+    return 0;
+  uint8_t val = sprite->image[i / 2];
+  return i % 2 == 0 ? val >> 4 : val & 0x0F;
+}
+
 int main() {
   srand(*(unsigned int *)getauxval(AT_RANDOM));
 
@@ -39,10 +47,8 @@ int main() {
 
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
-      uint8_t h = sprite->image[y * sprite->w + x];
-      uint8_t l = 0;
-      if (y + 1 < sprite->h)
-        l = sprite->image[(y + 1) * sprite->w + x];
+      uint8_t h = pixel(sprite, x, y);
+      uint8_t l = pixel(sprite, x, y + 1);
       uint8_t rh, gh, bh, rl, gl, bl;
       if (h) {
         rh = sprite->colormap[0][h - 1];
