@@ -6,6 +6,9 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#define FG "\033[38;2;%d;%d;%dm"
+#define BG "\033[48;2;%d;%d;%dm"
+
 struct Sprite {
   unsigned int w;
   unsigned int h;
@@ -26,7 +29,7 @@ int main() {
   size_t n = 0;
   const struct Sprite *sprite = NULL;
   for (size_t i = 0; i < n_sprites; i++) {
-    if (2 * sprites[i].w > w.ws_col || 2 + sprites[i].h > w.ws_row)
+    if (sprites[i].w > w.ws_col || (sprites[i].h + 1) / 2 + 2 > w.ws_row)
       continue;
     if (rand() % (++n) == 0)
       sprite = &sprites[i];
@@ -34,17 +37,32 @@ int main() {
   if (!sprite)
     return 0;
 
-  for (size_t y = 0; y < sprite->h; y++) {
+  for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
-      uint8_t color = sprite->image[y * sprite->w + x];
-      if (color == 0) {
-        printf("  ");
-        continue;
+      uint8_t h = sprite->image[y * sprite->w + x];
+      uint8_t l = 0;
+      if (y + 1 < sprite->h)
+        l = sprite->image[(y + 1) * sprite->w + x];
+      uint8_t rh, gh, bh, rl, gl, bl;
+      if (h) {
+        rh = sprite->colormap[0][h - 1];
+        gh = sprite->colormap[1][h - 1];
+        bh = sprite->colormap[2][h - 1];
       }
-      uint8_t r = sprite->colormap[0][color - 1];
-      uint8_t g = sprite->colormap[1][color - 1];
-      uint8_t b = sprite->colormap[2][color - 1];
-      printf("\033[48;2;%d;%d;%dm  \033[m", r, g, b);
+      if (l) {
+        rl = sprite->colormap[0][l - 1];
+        gl = sprite->colormap[1][l - 1];
+        bl = sprite->colormap[2][l - 1];
+      }
+      if (h && l)
+        printf(BG FG "▄", rh, gh, bh, rl, gl, bl);
+      else if (h)
+        printf(FG "▀", rh, gh, bh);
+      else if (l)
+        printf(FG "▄", rl, gl, bl);
+      else
+        printf(" ");
+      printf("\033[m");
     }
     printf("\n");
   }
