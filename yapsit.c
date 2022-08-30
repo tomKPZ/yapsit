@@ -13,8 +13,8 @@ struct Sprite {
   unsigned int w;
   unsigned int h;
   const uint8_t *image;
-  const uint8_t colormap[15][3];
-  const uint8_t shiny[15][3];
+  const uint8_t colormap[16][4];
+  const uint8_t shiny[16][4];
 } const sprites[] = {
 #include "pokemon.h"
 };
@@ -46,30 +46,19 @@ int main() {
   if (!sprite)
     return 0;
 
-  const uint8_t(*colormap)[3] =
+  const uint8_t(*colormap)[4] =
       rand() % 16 == 0 ? sprite->shiny : sprite->colormap;
 
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
-      uint8_t h = pixel(sprite, x, y);
-      uint8_t l = pixel(sprite, x, y + 1);
-      uint8_t rh, gh, bh, rl, gl, bl;
-      if (h) {
-        rh = colormap[h - 1][0];
-        gh = colormap[h - 1][1];
-        bh = colormap[h - 1][2];
-      }
-      if (l) {
-        rl = colormap[l - 1][0];
-        gl = colormap[l - 1][1];
-        bl = colormap[l - 1][2];
-      }
-      if (h && l)
-        printf(BG FG "▄", rh, gh, bh, rl, gl, bl);
-      else if (h)
-        printf(FG "▀", rh, gh, bh);
-      else if (l)
-        printf(FG "▄", rl, gl, bl);
+      const uint8_t *h = colormap[pixel(sprite, x, y)];
+      const uint8_t *l = colormap[pixel(sprite, x, y + 1)];
+      if (h[3] && l[3])
+        printf(BG FG "▄", h[0], h[1], h[2], l[0], l[1], l[2]);
+      else if (h[3])
+        printf(FG "▀", h[0], h[1], h[2]);
+      else if (l[3])
+        printf(FG "▄", l[0], l[1], l[2]);
       else
         printf(" ");
       printf("\033[m");
