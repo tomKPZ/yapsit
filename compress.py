@@ -5,20 +5,6 @@ import heapq
 import itertools
 import json
 
-
-def gen(ax, ay, i):
-    if i == -1:
-        yield (ax, ay)
-        return
-    s = 2**i
-    yield from gen(ax, ay, i - 1)
-    yield from gen(ax + s, ay, i - 1)
-    yield from gen(ax + s, ay + s, i - 1)
-    yield from gen(ax, ay + s, i - 1)
-
-
-curve = list(gen(0, 0, 5))
-
 sprites = json.loads(open("data.json").read())
 
 
@@ -69,8 +55,6 @@ def he(data):
 uncompressed = 0
 compressed = 0
 for sprite in sprites:
-    tmp = [sprite[y * 64 + x] for (x, y) in curve]
-    sprite = tmp
     uncompressed += 4 * len(sprite)
     counts, runs = rle(sprite)
     compressed += len(he(counts)) + len(he(runs)) + 160
