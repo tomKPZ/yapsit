@@ -20,8 +20,8 @@ SPRITES = [
     # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
-    # ("generation-iv", "platinum", 493, True),
-    # ("generation-v", "black-white", 650, True),
+    ("generation-iv", "platinum", 493, True),
+    ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
 
