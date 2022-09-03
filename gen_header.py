@@ -6,7 +6,6 @@ import sys
 
 import PIL.Image
 
-URL = "https://pokemondb.net/sprites"
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 VERSIONS_DIR = os.path.join(
     SCRIPT_DIR,
@@ -16,13 +15,14 @@ VERSIONS_DIR = os.path.join(
     "versions",
 )
 SPRITES = [
-    ("generation-iii", "emerald", 386),
-    # ("generation-iii", "firered-leafgreen", 151),
-    # ("generation-iii", "ruby-sapphire", 386),
-    # ("generation-iv", "diamond-pearl", 493),
-    # ("generation-iv", "heartgold-soulsilver", 493),
-    # ("generation-iv", "platinum", 493),
-    # ("generation-v", "black-white", 650),
+    ("generation-iii", "emerald", 386, True),
+    # ("generation-iii", "firered-leafgreen", 151, True),
+    # ("generation-iii", "ruby-sapphire", 386, True),
+    # ("generation-iv", "diamond-pearl", 493, True),
+    # ("generation-iv", "heartgold-soulsilver", 493, True),
+    # ("generation-iv", "platinum", 493, True),
+    # ("generation-v", "black-white", 650, True),
+    # ("generation-vii", "icons", 807, False),
 ]
 
 
@@ -44,30 +44,40 @@ def create_colormap(sprite, shiny):
     return colormap
 
 
-for gen, game, max_id in SPRITES:
+pokedex = collections.defaultdict(set)
+for gen, game, max_id, has_shiny in SPRITES:
     sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
     shiny_dir = os.path.join(sprites_dir, "shiny")
     for id in range(max_id):
         basename = "%d.png" % (id + 1)
         path = os.path.join(sprites_dir, basename)
         sprite = PIL.Image.open(path).convert("RGBA")
-        shiny_path = os.path.join(shiny_dir, basename)
-        shiny = PIL.Image.open(shiny_path).convert("RGBA")
+        if has_shiny:
+            shiny_path = os.path.join(shiny_dir, basename)
+            shiny = PIL.Image.open(shiny_path).convert("RGBA")
+        else:
+            shiny = sprite
 
         colormap = create_colormap(sprite, shiny)
         if len(colormap) > 16:
             print("Excess colors in sprite", path, file=sys.stderr)
             continue
 
+        image = []
         xl, yl, xh, yh = sprite.getbbox()
-        print("{%d,%d,(uint8_t[]){" % (xh - xl, yh - yl), end="")
-        startb = True
         for y in range(yl, yh):
             for x in range(xl, xh):
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
-                color = colormap[color]
-                print(("0x%X" if startb else "%X,") % color, end="")
-                startb = not startb
+                image.append(colormap[color])
+        pokedex[id].add((xh - xl, yh - yl, tuple(image), tuple(colormap)))
+
+for pokemon in pokedex.values():
+    for w, h, sprite, colormap in pokemon:
+        print("{%d,%d,(uint8_t[]){" % (w, h), end="")
+        startb = True
+        for color in sprite:
+            print(("0x%X" if startb else "%X,") % color, end="")
+            startb = not startb
         print("},{")
         for (color, _) in colormap:
             print("0x%04X," % color, end="")
