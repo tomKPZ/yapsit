@@ -1,6 +1,7 @@
 pokemon.h
 yapsit
 *.bak
+*.json
 
 # Prerequisites
 *.d
