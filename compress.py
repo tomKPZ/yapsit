@@ -32,23 +32,29 @@ def he(data):
         heapq.heappush(heap, (c1 + c2, -len(heap), (v1, v2)))
     tree = heap[0][2]
 
-    d2b = {}
+    data2bits = {}
     acc = []
+    form = []
+    perm = []
 
-    def encode(node):
+    def dfs(node):
         if type(node) == int:
-            d2b[node] = acc[::]
+            form.append(1)
+            data2bits[node] = acc[::]
+            perm.append(node)
             return
+        form.append(0)
         l, r = node
         acc.append(0)
-        encode(l)
+        dfs(l)
         acc.pop()
         acc.append(1)
-        encode(r)
+        dfs(r)
         acc.pop()
 
-    encode(tree)
-    return sum((d2b[x] for x in data), start=[])
+    dfs(tree)
+    bits = sum((data2bits[x] for x in data), start=[])
+    return (bits, form, perm)
 
 
 uncompressed = 0
@@ -56,5 +62,5 @@ compressed = 0
 for sprite in sprites:
     uncompressed += 4 * len(sprite)
     counts, runs = rle(sprite)
-    compressed += len(he(counts)) + len(he(runs)) + 160
+    compressed += len(he(counts)[0]) + len(he(runs)[0]) + 160
 print(compressed, uncompressed, compressed / uncompressed)
