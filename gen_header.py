@@ -24,15 +24,17 @@ FNAME_PAT = re.compile(r"\d{1,3}.png")
 
 def pixel(sprite, x, y):
     r, g, b, a = sprite.getpixel((x, y))
-    return (r, g, b, a) if a else (0, 0, 0, 0)
+    if not a:
+        return 0
+    return (a >> 7) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3)
 
 
 def create_colormap(sprite, shiny):
-    colormap = collections.OrderedDict({(0,) * 8: 0})
+    colormap = collections.OrderedDict({(0, 0): 0})
     n, m = sprite.size
     for y in range(m):
         for x in range(n):
-            color = pixel(sprite, x, y) + pixel(shiny, x, y)
+            color = (pixel(sprite, x, y), pixel(shiny, x, y))
             if color not in colormap:
                 colormap[color] = len(colormap)
     return colormap
@@ -55,14 +57,14 @@ for p in os.listdir(SPRITES_DIR):
     startb = True
     for y in range(yl, yh):
         for x in range(xl, xh):
-            color = pixel(sprite, x, y) + pixel(shiny, x, y)
+            color = (pixel(sprite, x, y), pixel(shiny, x, y))
             color = colormap[color]
             print(("0x%X" if startb else "%X,") % color, end="")
             startb = not startb
     print("},{")
-    for (r, g, b, a, _, _, _, _) in colormap:
-        print("{%s}," % ",".join("0x%02X" % c for c in (r, g, b, a)), end="")
+    for (color, _) in colormap:
+        print("0x%04X," % color, end="")
     print("},{")
-    for (_, _, _, _, r, g, b, a) in colormap:
-        print("{%s}," % ",".join("0x%02X" % c for c in (r, g, b, a)), end="")
+    for (_, color) in colormap:
+        print("0x%04X," % color, end="")
     print("}},")
