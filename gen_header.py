@@ -44,7 +44,6 @@ def create_colormap(sprite, shiny):
     return colormap
 
 
-pokedex = collections.defaultdict(set)
 for gen, game, max_id, has_shiny in SPRITES:
     sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
     shiny_dir = os.path.join(sprites_dir, "shiny")
@@ -63,21 +62,15 @@ for gen, game, max_id, has_shiny in SPRITES:
             print("Excess colors in sprite", path, file=sys.stderr)
             continue
 
-        image = []
+        startb = True
         xl, yl, xh, yh = sprite.getbbox()
+        print("{%d,%d,(uint8_t[]){" % (xh - xl, yh - yl), end="")
         for y in range(yl, yh):
             for x in range(xl, xh):
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
-                image.append(colormap[color])
-        pokedex[id].add((xh - xl, yh - yl, tuple(image), tuple(colormap)))
-
-for pokemon in pokedex.values():
-    for w, h, sprite, colormap in pokemon:
-        print("{%d,%d,(uint8_t[]){" % (w, h), end="")
-        startb = True
-        for color in sprite:
-            print(("0x%X" if startb else "%X,") % color, end="")
-            startb = not startb
+                color = colormap[color]
+                print(("0x%X" if startb else "%X,") % color, end="")
+                startb = not startb
         print("},{")
         for (color, _) in colormap:
             print("0x%04X," % color, end="")
