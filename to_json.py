@@ -20,8 +20,8 @@ SPRITES = [
     # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
-    ("generation-iv", "platinum", 493, True),
-    ("generation-v", "black-white", 650, True),
+    # ("generation-iv", "platinum", 493, True),
+    # ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
 
@@ -64,9 +64,9 @@ for gen, game, max_id, has_shiny in SPRITES:
             continue
 
         data = []
-        xl, yl, xh, yh = sprite.getbbox()
-        for y in range(yl, yh):
-            for x in range(xl, xh):
+        w, h = sprite.size
+        for y in range(h):
+            for x in range(w):
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
                 color = colormap[color]
                 data.append(color)

@@ -6,13 +6,19 @@ import itertools
 import json
 
 sprites = json.loads(open("data.json").read())
+hilbert = json.loads(open("hilbert.json").read())
 
 
 def rle(data):
     counts = []
     runs = []
     for x, g in itertools.groupby(data):
-        counts.append(len(list(g)))
+        count = len(list(g))
+        while count > 16:
+            counts.append(15)
+            runs.append(x)
+            count -= 16
+        counts.append(count - 1)
         runs.append(x)
     return (counts, runs)
 
@@ -47,8 +53,12 @@ def he(data):
     return sum((encode[x] for x in data), start=[])
 
 
-print(len(sprites[0]))
-counts, runs = rle(sprites[0])
-print(len(he(sprites[0])))
-print(len(he(counts)))
-print(len(he(runs)))
+uncompressed = 0
+compressed = 0
+for sprite in sprites:
+    tmp = [sprite[y * 64 + x] for (x, y) in hilbert]
+    sprite = tmp
+    uncompressed += 4 * len(sprite)
+    counts, runs = rle(sprite)
+    compressed += len(he(counts)) + len(he(runs)) + 160
+print(compressed, uncompressed, compressed / uncompressed)
