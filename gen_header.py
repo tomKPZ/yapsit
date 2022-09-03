@@ -44,7 +44,7 @@ def create_colormap(sprite, shiny):
     return colormap
 
 
-pokedex = collections.defaultdict(set)
+pokedex = collections.defaultdict(list)
 for gen, game, max_id, has_shiny in SPRITES:
     sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
     shiny_dir = os.path.join(sprites_dir, "shiny")
@@ -64,20 +64,45 @@ for gen, game, max_id, has_shiny in SPRITES:
             continue
 
         image = []
-        xl, yl, xh, yh = sprite.getbbox()
-        for y in range(yl, yh):
-            for x in range(xl, xh):
+        w, h = sprite.size
+        for y in range(h):
+            for x in range(w):
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
                 image.append(colormap[color])
-        pokedex[id].add((xh - xl, yh - yl, tuple(image), tuple(colormap)))
+
+        pokedex[id].append(((w, h), sprite.getbbox(), image, tuple(colormap)))
+
+
+# def delta(s1, s2):
+#     def aux(s1, s2):
+#         d = collections.defaultdict(collections.Counter)
+#         for c1, c2 in zip(s1, s2):
+#             d[c1][c2] += 1
+#         return sum(sum(vs.values()) - max(vs.values()) for vs in d.values())
+#
+#     return min(aux(s1, s2), aux(s2, s1))
+#
+#
+# for i, pokemon in pokedex.items():
+#     dedupe = []
+#     for _, _, sprite, colormap in pokemon:
+#         image = [colormap[color][0] for color in sprite]
+#         for d in dedupe:
+#             if len(d) == len(image):
+#                 print(delta(d, image), i + 1, file=sys.stderr)
+#         dedupe.append(image)
 
 for pokemon in pokedex.values():
-    for w, h, sprite, colormap in pokemon:
+    for (sw, sh), (xl, yl, xh, yh), sprite, colormap in pokemon:
+        w = xh - xl
+        h = yh - yl
         print("{%d,%d,(uint8_t[]){" % (w, h), end="")
         startb = True
-        for color in sprite:
-            print(("0x%X" if startb else "%X,") % color, end="")
-            startb = not startb
+        for y in range(h):
+            for x in range(w):
+                color = sprite[(y + yl) * sw + (x + xl)]
+                print(("0x%X" if startb else "%X,") % color, end="")
+                startb = not startb
         print("},{")
         for (color, _) in colormap:
             print("0x%04X," % color, end="")
