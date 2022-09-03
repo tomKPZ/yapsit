@@ -23,33 +23,32 @@ def rle(data):
 
 
 def he(data):
-    heap = [
-        (count, i, val)
-        for i, (val, count) in enumerate(collections.Counter(data).items())
-    ]
+    counter = collections.Counter(data)
+    heap = [(counter[i], i, i) for i in range(16)]
     heapq.heapify(heap)
     while len(heap) > 1:
         c1, _, v1 = heapq.heappop(heap)
         c2, _, v2 = heapq.heappop(heap)
         heapq.heappush(heap, (c1 + c2, -len(heap), (v1, v2)))
+    tree = heap[0][2]
 
-    encode = {}
+    d2b = {}
     acc = []
 
-    def dfs(node):
+    def encode(node):
         if type(node) == int:
-            encode[node] = acc[::]
+            d2b[node] = acc[::]
             return
         l, r = node
         acc.append(0)
-        dfs(l)
+        encode(l)
         acc.pop()
         acc.append(1)
-        dfs(r)
+        encode(r)
         acc.pop()
 
-    dfs(heap[0][2])
-    return sum((encode[x] for x in data), start=[])
+    encode(tree)
+    return sum((d2b[x] for x in data), start=[])
 
 
 uncompressed = 0
