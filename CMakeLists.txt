@@ -17,3 +17,4 @@ add_custom_command(
 
 add_executable(yapsit yapsit.c pokemon.c)
 set_target_properties(yapsit PROPERTIES LINK_FLAGS_RELEASE -s)
+install(TARGETS yapsit DESTINATION bin)
