@@ -126,6 +126,8 @@ def output_huffman(data):
     print("},")
 
 
+print('#include "types.h"')
+print("const Sprite sprites[] = {")
 for gen, game, max_id, has_shiny in SPRITES:
     sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
     shiny_dir = os.path.join(sprites_dir, "shiny")
@@ -162,3 +164,5 @@ for gen, game, max_id, has_shiny in SPRITES:
         output_huffman(counts)
         output_huffman(runs)
         print("},")
+print("};")
+print("const size_t n_sprites = sizeof(sprites) / sizeof(sprites[0]);")

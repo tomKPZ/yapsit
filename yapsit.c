@@ -7,51 +7,13 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include "types.h"
+
+extern const Sprite sprites[];
+extern const size_t n_sprites;
+
 #define FG "\033[38;2;%d;%d;%dm"
 #define BG "\033[48;2;%d;%d;%dm"
-
-typedef struct {
-  uint8_t form[4];
-  uint8_t perm[8];
-  const uint8_t *data;
-} HuffmanHeader;
-
-typedef struct {
-  bool is_leaf;
-  union {
-    struct {
-      uint8_t l;
-      uint8_t r;
-    } node;
-    uint8_t val;
-  } data;
-} HuffmanNode;
-
-typedef struct {
-  const uint8_t *bits;
-  size_t offset;
-} BitstreamContext;
-
-typedef struct {
-  HuffmanNode nodes[31];
-  BitstreamContext bits;
-} HuffmanContext;
-
-typedef struct {
-  uint8_t count;
-  uint8_t value;
-  HuffmanContext counts;
-  HuffmanContext values;
-} RunlengthContext;
-
-typedef struct {
-  uint8_t w;
-  uint8_t h;
-  uint16_t colormap[16];
-  uint16_t shiny[16];
-  HuffmanHeader counts;
-  HuffmanHeader values;
-} Sprite;
 
 static bool read_bit(BitstreamContext *bitstream) {
   uint8_t byte = bitstream->bits[bitstream->offset / 8];
@@ -118,12 +80,6 @@ static uint8_t runlength_decode(RunlengthContext *context) {
   context->count--;
   return context->value;
 }
-
-static const Sprite sprites[] = {
-#include "pokemon.h"
-};
-
-const size_t n_sprites = sizeof(sprites) / sizeof(sprites[0]);
 
 static bool A(uint16_t c) { return c >> 15; }
 static uint8_t R(uint16_t c) { return ((c >> 10) & 0b11111) * 8 * 255 / 248; }
