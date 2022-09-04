@@ -155,10 +155,10 @@ for gen, game, max_id, has_shiny in SPRITES:
                 image.append(colormap[color])
 
         print("{%d,%d,{" % (xh - xl, yh - yl), end="")
-        for (color, _) in colormap:
+        for (color, _) in list(colormap)[1:]:
             print("0x%04X," % color, end="")
         print("},{")
-        for (_, color) in colormap:
+        for (_, color) in list(colormap)[1:]:
             print("0x%04X," % color, end="")
         print("},")
         counts, runs = rle(image)

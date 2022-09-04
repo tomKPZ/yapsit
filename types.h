@@ -42,8 +42,8 @@ typedef struct {
 typedef struct {
   uint8_t w;
   uint8_t h;
-  uint16_t colormap[16];
-  uint16_t shiny[16];
+  uint16_t colormap[15];
+  uint16_t shiny[15];
   HuffmanHeader counts;
   HuffmanHeader values;
 } Sprite;

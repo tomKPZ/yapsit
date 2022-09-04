@@ -70,7 +70,6 @@ static void runlength_init(RunlengthContext *context,
                            const HuffmanHeader *values, size_t offset) {
   context->count = 0;
   context->value = 0;
-  printf("%zu %zu\n", offset, offset + counts->size);
   huffman_init(&context->counts, counts, offset);
   huffman_init(&context->values, values, offset + counts->size);
 }
@@ -88,6 +87,10 @@ static bool A(uint16_t c) { return c >> 15; }
 static uint8_t R(uint16_t c) { return ((c >> 10) & 0b11111) * 8 * 255 / 248; }
 static uint8_t G(uint16_t c) { return ((c >> 5) & 0b11111) * 8 * 255 / 248; }
 static uint8_t B(uint16_t c) { return (c & 0b11111) * 8 * 255 / 248; }
+
+static uint16_t color(const uint16_t *colormap, uint8_t i) {
+  return i ? colormap[i - 1] : 0;
+}
 
 int main() {
   srand(*(unsigned int *)getauxval(AT_RANDOM));
@@ -120,10 +123,10 @@ int main() {
     for (size_t x = 0; x < sprite->w; x++)
       runlength_decode(&b);
     for (size_t x = 0; x < sprite->w; x++) {
-      uint16_t h = colormap[runlength_decode(&t)];
+      uint16_t h = color(colormap, runlength_decode(&t));
       uint16_t l = 0;
       if (y + 1 < sprite->h)
-        l = colormap[runlength_decode(&b)];
+        l = color(colormap, runlength_decode(&b));
       if (A(h) && A(l))
         printf(BG FG "▄", R(h), G(h), B(h), R(l), G(l), B(l));
       else if (A(h))
