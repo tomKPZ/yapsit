@@ -27,6 +27,8 @@ SPRITES = [
     # ("generation-vii", "icons", 807, False),
 ]
 
+encoded = []
+
 
 def pixel(sprite, x, y):
     r, g, b, a = sprite.getpixel((x, y))
@@ -109,21 +111,20 @@ def byte_encode(bits):
     print("{")
     for i in range(0, len(bits), 8):
         print("0x%02X," % bit_encode(bits[i : i + 8]), end="")
-    print("},")
+    print("}")
 
 
 def output_huffman(data):
     bits, form, perm = he(data)
     print("{")
     byte_encode(list(form))
-    print("{")
+    print(",{")
     startb = True
     for x in perm:
         print(("0x%X" if startb else "%X,") % x, end="")
         startb = not startb
-    print("},(uint8_t[])")
-    byte_encode(bits)
-    print("},")
+    print("},%d,}," % len(bits))
+    encoded.append(bits)
 
 
 print('#include "types.h"')
@@ -166,3 +167,6 @@ for gen, game, max_id, has_shiny in SPRITES:
         print("},")
 print("};")
 print("const size_t n_sprites = sizeof(sprites) / sizeof(sprites[0]);")
+print("const uint8_t encoded[] =")
+byte_encode([y for x in encoded for y in x])
+print(";")

@@ -8,7 +8,7 @@
 typedef struct {
   uint8_t form[4];
   uint8_t perm[8];
-  const uint8_t *data;
+  uint16_t size;
 } HuffmanHeader;
 
 typedef struct {
