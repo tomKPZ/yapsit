@@ -11,7 +11,7 @@ def lz77(data):
             for k in range(j, min(i, n - i + j)):
                 if data[k] != data[i + k - j]:
                     break
-                run = max(run, (k - j + 1, i - j))
+                run = max(run, (k - j + 1, j - i))
         if not run[0]:
             ans.append((0, 0, data[i]))
             i += 1
@@ -19,7 +19,7 @@ def lz77(data):
 
         runlen, delta = run
         nxt = data[i + runlen] if i + runlen < n else None
-        ans.append((delta, runlen, nxt))
+        ans.append((-delta, runlen, nxt))
         i += 1 + runlen
     return ans
 
