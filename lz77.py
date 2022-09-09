@@ -2,11 +2,10 @@
 
 
 def lz77(data):
+    ans = []
+    i = 0
     n = len(data)
-
-    def aux(i):
-        if i >= n:
-            return (0, None)
+    while i < n:
         prefix = data[:i]
         suffix = data[i:]
         run = (0, 0)
@@ -16,20 +15,14 @@ def lz77(data):
                     break
                 run = max(run, (k - j + 1, i - j))
         if not run[0]:
-            size, lst = aux(i + 1)
-            return (size + 1, ((0, 0, data[i]), lst))
+            ans.append((0, 0, data[i]))
+            i += 1
+            continue
 
         runlen, delta = run
-        lstlen, lst = aux(i + runlen + 1)
         nxt = data[i + runlen] if i + runlen < n else None
-        return (1 + lstlen, ((delta, runlen, nxt), lst))
-
-    node = aux(0)[1]
-    ans = []
-    while node is not None:
-        first, rest = node
-        ans.append(first)
-        node = rest
+        ans.append((delta, runlen, nxt))
+        i += 1 + runlen
     return ans
 
 
