@@ -6,12 +6,10 @@ def lz77(data):
     i = 0
     n = len(data)
     while i < n:
-        prefix = data[:i]
-        suffix = data[i:]
         run = (0, 0)
         for j in range(i):
-            for k in range(j, min(i, len(suffix) + j)):
-                if prefix[k] != suffix[k - j]:
+            for k in range(j, min(i, n - i + j)):
+                if data[k] != data[i + k - j]:
                     break
                 run = max(run, (k - j + 1, i - j))
         if not run[0]:
