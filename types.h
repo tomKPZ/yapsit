@@ -46,6 +46,7 @@ typedef struct {
   uint16_t shiny[15];
   HuffmanHeader counts;
   HuffmanHeader values;
+  HuffmanHeader unused;
 } Sprite;
 
 #endif

@@ -2,7 +2,6 @@
 
 import collections
 import heapq
-import itertools
 import os
 import sys
 
@@ -48,18 +47,27 @@ def create_colormap(sprite, shiny):
     return colormap
 
 
-def rle(data):
-    counts = []
-    runs = []
-    for x, g in itertools.groupby(data):
-        count = len(list(g))
-        while count > 16:
-            counts.append(15)
-            runs.append(x)
-            count -= 16
-        counts.append(count - 1)
-        runs.append(x)
-    return (counts, runs)
+def lz77(data):
+    ans = []
+    i = 0
+    n = len(data)
+    while i < n:
+        run = (0, 0)
+        for j in range(i):
+            for k in range(j, min(i, n - i + j)):
+                if data[k] != data[i + k - j]:
+                    break
+                run = max(run, (k - j + 1, j - i))
+        if not run[0]:
+            ans.append((0, 0, data[i]))
+            i += 1
+            continue
+
+        runlen, delta = run
+        nxt = data[i + runlen] if i + runlen < n else 0
+        ans.append((-delta, runlen, nxt))
+        i += 1 + runlen
+    return zip(*ans)
 
 
 def he(data):
@@ -93,7 +101,7 @@ def he(data):
         acc.pop()
 
     dfs(tree)
-    bits = [y for x in data for y in data2bits[x]]
+    bits = [y for x in data for y in data2bits[x % 16]]
     return (bits, form, perm)
 
 
@@ -161,9 +169,8 @@ for gen, game, max_id, has_shiny in SPRITES:
         for (_, color) in list(colormap)[1:]:
             print("0x%04X," % color, end="")
         print("},")
-        counts, runs = rle(image)
-        output_huffman(counts)
-        output_huffman(runs)
+        for data in lz77(image):
+            output_huffman(data)
         print("},")
 print("};")
 print("const size_t n_sprites = sizeof(sprites) / sizeof(sprites[0]);")
