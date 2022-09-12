@@ -94,6 +94,7 @@ for gen, game, max_id, has_shiny in SPRITES:
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
                 image.append(colormap[color])
 
-        delta, runlen, color = list(lz77(image))
-        for d in runlen:
-            print(d)
+        # delta, runlen, color = list(lz77(image))
+        # for d in delta:
+        #     print(d)
+        print(len(list(lz77(image))[0]))
