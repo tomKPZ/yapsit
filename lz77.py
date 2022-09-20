@@ -4,7 +4,7 @@ import functools
 import random
 
 
-def lz77_dp(data):
+def lz77(data):
     n = len(data)
     inf = float("inf")
 
@@ -39,38 +39,6 @@ def lz77_dp(data):
     return ans
 
 
-def lz77_greedy(data):
-    n = len(data)
-
-    def aux(i):
-        if i >= n:
-            return (0, None)
-        prefix = data[:i]
-        suffix = data[i:]
-        run = (0, 0)
-        for j in range(i):
-            for k in range(j, min(i, len(suffix) + j)):
-                if prefix[k] != suffix[k - j]:
-                    break
-                run = max(run, (k - j + 1, i - j))
-        if not run[0]:
-            size, lst = aux(i + 1)
-            return (size + 1, ((0, 0, data[i]), lst))
-
-        runlen, delta = run
-        lstlen, lst = aux(i + runlen + 1)
-        nxt = data[i + runlen] if i + runlen < n else None
-        return (1 + lstlen, ((delta, runlen, nxt), lst))
-
-    node = aux(0)[1]
-    ans = []
-    while node is not None:
-        first, rest = node
-        ans.append(first)
-        node = rest
-    return ans
-
-
 def unlz77(data):
     ans = []
     for dist, size, nxt in data:
@@ -85,13 +53,9 @@ def unlz77(data):
 
 
 def test(string):
-    assert string == "".join(unlz77(lz77_dp(string)))
-    assert string == "".join(unlz77(lz77_greedy(string)))
-    l1, l2 = (len(lz77_dp(string)), len(lz77_greedy(string)))
-    if l1 != l2:
-        print(l1, l2)
+    assert string == "".join(unlz77(lz77(string)))
 
 
-while True:
+for _ in range(10):
     string = "".join(random.choice("ab") for _ in range(500))
     test(string)
