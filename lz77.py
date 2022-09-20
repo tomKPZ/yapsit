@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 
-import cProfile
 import random
 
 
 def lz77(data):
     n = len(data)
-    inf = float("inf")
-
     dp = [0] * n
     for i in reversed(range(n)):
-        ans = (inf, None)
+        size, lst = dp[i + 1] if i + 1 < n else (0, None)
+        ans = (size + 1, ((0, 0, data[i]), lst))
         for j in range(i):
             for k in range(j, min(i, n - i + j)):
                 if data[k] != data[i + k - j]:
@@ -21,10 +19,6 @@ def lz77(data):
                 lstlen, lst = dp[index] if index < n else (0, None)
                 nxt = data[i + runlen] if i + runlen < n else None
                 ans = min(ans, (1 + lstlen, ((delta, runlen, nxt), lst)))
-        if not ans[1]:
-            size, lst = dp[i + 1] if i + 1 < n else (0, None)
-            dp[i] = (size + 1, ((0, 0, data[i]), lst))
-            continue
         dp[i] = ans
 
     node = dp[0][1]
@@ -54,7 +48,4 @@ def test(string):
 
 
 for _ in range(10):
-    string = "".join(random.choice("ab") for _ in range(500))
-    test(string)
-str = "".join(random.choice("ab") for _ in range(500))
-cProfile.run("lz77(str)")
+    test("".join(random.choice("ab") for _ in range(500)))
