@@ -12,12 +12,10 @@ def lz77(data):
     def aux(i):
         if i >= n:
             return (0, None)
-        prefix = data[:i]
-        suffix = data[i:]
         runs = {}
         for j in range(i):
-            for k in range(j, min(i, len(suffix) + j)):
-                if prefix[k] != suffix[k - j]:
+            for k in range(j, min(i, n - i + j)):
+                if data[k] != data[i + k - j]:
                     break
                 runs[k - j + 1] = i - j
         if not runs:
