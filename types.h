@@ -8,7 +8,6 @@
 typedef struct {
   uint8_t form[4];
   uint8_t perm[8];
-  uint16_t size;
 } HuffmanHeader;
 
 typedef struct {
@@ -44,8 +43,8 @@ typedef struct {
   uint8_t h;
   uint16_t colormap[15];
   uint16_t shiny[15];
-  HuffmanHeader counts;
-  HuffmanHeader values;
+  uint16_t count_size;
+  uint16_t value_size;
 } Sprite;
 
 #endif

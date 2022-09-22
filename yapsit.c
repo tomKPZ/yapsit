@@ -11,7 +11,10 @@
 
 extern const Sprite sprites[];
 extern const size_t n_sprites;
-extern const uint8_t encoded[];
+extern const uint8_t count_bits[];
+extern const uint8_t value_bits[];
+extern const HuffmanHeader count_header;
+extern const HuffmanHeader value_header;
 
 #define FG "\033[38;2;%d;%d;%dm"
 #define BG "\033[48;2;%d;%d;%dm"
@@ -41,16 +44,16 @@ static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
 }
 
 static void huffman_init(HuffmanContext *context, const HuffmanHeader *header,
-                         size_t offset) {
+                         const uint8_t *bits, size_t offset) {
   uint8_t perms[16];
   for (int i = 0; i < 8; i++) {
     perms[2 * i] = header->perm[i] >> 4;
     perms[2 * i + 1] = header->perm[i] & 0x0F;
   }
-  BitstreamContext bits = {header->form, 0};
+  BitstreamContext bitstream = {header->form, 0};
   uint8_t *perm = perms;
-  decode_node(&bits, context->nodes, 0, &perm);
-  context->bits.bits = encoded;
+  decode_node(&bitstream, context->nodes, 0, &perm);
+  context->bits.bits = bits;
   context->bits.offset = offset;
 }
 
@@ -67,11 +70,12 @@ static uint8_t huffman_decode(HuffmanContext *context) {
 
 static void runlength_init(RunlengthContext *context,
                            const HuffmanHeader *counts,
-                           const HuffmanHeader *values, size_t offset) {
+                           const HuffmanHeader *values, size_t count_offset,
+                           size_t value_offset) {
   context->count = 0;
   context->value = 0;
-  huffman_init(&context->counts, counts, offset);
-  huffman_init(&context->values, values, offset + counts->size);
+  huffman_init(&context->counts, counts, count_bits, count_offset);
+  huffman_init(&context->values, values, value_bits, value_offset);
 }
 
 static uint8_t runlength_decode(RunlengthContext *context) {
@@ -99,16 +103,20 @@ int main() {
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
   size_t n = 0;
-  size_t offset = 0;
+  size_t count_offset = 0;
+  size_t value_offset = 0;
   const Sprite *sprite = NULL;
-  size_t sprite_offset = 0;
+  size_t sprite_count_offset = 0;
+  size_t sprite_value_offset = 0;
   for (size_t i = 0; i < n_sprites; i++) {
     if (sprites[i].w <= w.ws_col && (sprites[i].h + 1) / 2 + 2 <= w.ws_row &&
         rand() % (++n) == 0) {
       sprite = &sprites[i];
-      sprite_offset = offset;
+      sprite_count_offset = count_offset;
+      sprite_value_offset = value_offset;
     }
-    offset += sprites[i].counts.size + sprites[i].values.size;
+    count_offset += sprites[i].count_size;
+    value_offset += sprites[i].value_size;
   }
   if (!sprite)
     return 0;
@@ -117,7 +125,8 @@ int main() {
       rand() % 16 == 0 ? sprite->shiny : sprite->colormap;
 
   RunlengthContext t;
-  runlength_init(&t, &sprite->counts, &sprite->values, sprite_offset);
+  runlength_init(&t, &count_header, &value_header, sprite_count_offset,
+                 sprite_value_offset);
   for (size_t y = 0; y < sprite->h; y += 2) {
     RunlengthContext b = t;
     for (size_t x = 0; x < sprite->w; x++)
