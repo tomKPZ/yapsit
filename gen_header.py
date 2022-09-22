@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
-import collections
 import heapq
-import itertools
 import os
 import sys
+from collections import Counter, OrderedDict, defaultdict, namedtuple
 
 import PIL.Image
 
@@ -27,6 +26,9 @@ SPRITES = [
     # ("generation-vii", "icons", 807, False),
 ]
 
+Huffman = namedtuple("Huffman", ["bits", "form", "perm", "data2bits"])
+Lz77 = namedtuple("Lz77", ["deltas", "runlen", "values"])
+
 
 def pixel(sprite, x, y):
     r, g, b, a = sprite.getpixel((x, y))
@@ -36,35 +38,48 @@ def pixel(sprite, x, y):
 
 
 def create_colormap(sprite, shiny):
-    counter = collections.Counter()
+    counter = Counter()
     n, m = sprite.size
     for y in range(m):
         for x in range(n):
             color = (pixel(sprite, x, y), pixel(shiny, x, y))
             counter[color] -= 1
     del counter[(0, 0)]
-    colormap = collections.OrderedDict({(0, 0): 0})
+    colormap = OrderedDict({(0, 0): 0})
     for count, color in sorted(zip(counter.values(), counter.keys())):
         colormap[color] = len(colormap)
     return colormap
 
 
-def rle(data):
-    counts = []
-    values = []
-    for x, g in itertools.groupby(data):
-        count = len(list(g))
-        while count > 16:
-            counts.append(15)
-            values.append(x)
-            count -= 16
-        counts.append(count - 1)
-        values.append(x)
-    return (counts, values)
+def lz77(data):
+    n = len(data)
+    dp = [0] * n
+    for i in reversed(range(n)):
+        size, lst = dp[i + 1] if i + 1 < n else (0, None)
+        ans = (size + 1, ((0, 0, data[i]), lst))
+        for j in range(max(0, i - 15), i):
+            for k in range(j, min(i, n - i + j)):
+                if data[k] != data[i + k - j]:
+                    break
+                runlen = k - j + 1
+                delta = i - j
+                index = i + runlen + 1
+                lstlen, lst = dp[index] if index < n else (0, None)
+                nxt = data[i + runlen] if i + runlen < n else None
+                ans = min(ans, (1 + lstlen, ((delta, runlen, nxt), lst)))
+        dp[i] = ans
+
+    node = dp[0][1]
+    ans = []
+    while node is not None:
+        first, rest = node
+        ans.append(first)
+        node = rest
+    return Lz77(*zip(*ans))
 
 
 def he(data):
-    counter = collections.Counter(data)
+    counter = Counter(data)
     heap = [(counter[i], i, i) for i in range(16)]
     heapq.heapify(heap)
     while len(heap) > 1:
@@ -95,15 +110,7 @@ def he(data):
 
     dfs(tree)
     bits = [y for x in data for y in data2bits[x]]
-    return (bits, form, perm, data2bits)
-
-
-def bit_encode(bits):
-    encoded = 0
-    for bit in bits:
-        encoded *= 2
-        encoded += bit
-    return encoded
+    return Huffman(bits, form, perm, data2bits)
 
 
 def byte_encode(bits):
@@ -111,7 +118,11 @@ def byte_encode(bits):
         bits.append(0)
     print("{")
     for i in range(0, len(bits), 8):
-        print("0x%02X," % bit_encode(bits[i : i + 8]), end="")
+        encoded = 0
+        for bit in bits[i : i + 8]:
+            encoded *= 2
+            encoded += bit
+        print("0x%02X," % encoded, end="")
     print("}")
 
 
@@ -152,20 +163,17 @@ for gen, game, max_id, has_shiny in SPRITES:
             for x in range(xl, xh):
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
                 image.append(colormap[color])
-        counts, values = rle(image)
-        images.append(((xh - xl, yh - yl), colormap, counts, values))
+        images.append(((xh - xl, yh - yl), colormap, lz77(image)))
 
-all_counts = []
-all_values = []
-for _, _, counts, values in images:
-    all_counts.extend(counts)
-    all_values.extend(values)
-count_bits, count_form, count_perm, count_data2bits = he(all_counts)
-value_bits, value_form, value_perm, value_data2bits = he(all_values)
+all_streams = defaultdict(list)
+for _, _, streams in images:
+    for i, stream in enumerate(streams):
+        all_streams[i].extend(list(stream))
+lz = Lz77(*(he(stream) for stream in all_streams.values()))
 
 print('#include "types.h"')
 print("const Sprite sprites[] = {")
-for size, colormap, counts, values in images:
+for size, colormap, streams in images:
     print("{%d,%d,{" % size, end="")
     for (color, _) in list(colormap)[1:]:
         print("0x%04X," % color, end="")
@@ -173,19 +181,24 @@ for size, colormap, counts, values in images:
     for (_, color) in list(colormap)[1:]:
         print("0x%04X," % color, end="")
     print("},")
-    count_size = sum(len(count_data2bits[x]) for x in counts)
-    value_size = sum(len(value_data2bits[x]) for x in values)
-    print("%d,%d," % (count_size, value_size))
+    for stream, huffman in zip(streams, lz):
+        size = sum(len(huffman.data2bits[x]) for x in stream)
+        print("%d," % size)
     print("},")
 print("};")
 print("const size_t n_sprites = %s;" % len(images))
-print("const uint8_t count_bits[] =")
-byte_encode(count_bits)
+print("const uint8_t deltas_bits[] =")
+byte_encode(lz.deltas.bits)
 print(";")
-print("const uint8_t value_bits[] =")
-byte_encode(value_bits)
+print("const uint8_t runlen_bits[] =")
+byte_encode(lz.runlen.bits)
 print(";")
-print("const HuffmanHeader count_header =")
-output_huffman(count_form, count_perm)
-print("const HuffmanHeader value_header =")
-output_huffman(value_form, value_perm)
+print("const uint8_t values_bits[] =")
+byte_encode(lz.values.bits)
+print(";")
+print("const HuffmanHeader deltas_header =")
+output_huffman(lz.deltas.form, lz.deltas.perm)
+print("const HuffmanHeader runlen_header =")
+output_huffman(lz.runlen.form, lz.runlen.perm)
+print("const HuffmanHeader values_header =")
+output_huffman(lz.values.form, lz.values.perm)

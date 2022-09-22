@@ -32,19 +32,13 @@ typedef struct {
 } HuffmanContext;
 
 typedef struct {
-  uint8_t count;
-  uint8_t value;
-  HuffmanContext counts;
-  HuffmanContext values;
-} RunlengthContext;
-
-typedef struct {
   uint8_t w;
   uint8_t h;
   uint16_t colormap[15];
   uint16_t shiny[15];
-  uint16_t count_size;
-  uint16_t value_size;
+  uint16_t deltas_size;
+  uint16_t runlen_size;
+  uint16_t values_size;
 } Sprite;
 
 #endif
