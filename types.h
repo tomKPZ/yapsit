@@ -6,19 +6,18 @@
 #include <stdint.h>
 
 typedef struct {
-  uint8_t form[4];
-  uint8_t perm[8];
+  uint8_t form[64];
+  uint8_t perm[256];
 } HuffmanHeader;
 
 typedef struct {
   bool is_leaf;
-  union {
-    struct {
-      uint8_t l;
-      uint8_t r;
-    } node;
-    uint8_t val;
-  } data;
+  uint8_t value;
+} HuffmanBranch;
+
+typedef struct {
+  HuffmanBranch l;
+  HuffmanBranch r;
 } HuffmanNode;
 
 typedef struct {
@@ -27,7 +26,7 @@ typedef struct {
 } BitstreamContext;
 
 typedef struct {
-  HuffmanNode nodes[31];
+  HuffmanNode nodes[256];
   BitstreamContext bits;
 } HuffmanContext;
 

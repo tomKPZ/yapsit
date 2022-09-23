@@ -57,7 +57,7 @@ def lz77(data):
     for i in reversed(range(n)):
         size, lst = dp[i + 1] if i + 1 < n else (0, None)
         ans = (size + 1, ((0, 0, data[i]), lst))
-        for j in range(max(0, i - 15), i):
+        for j in range(max(0, i - 255), i):
             for k in range(j, min(i, n - i + j)):
                 if data[k] != data[i + k - j]:
                     break
@@ -80,7 +80,7 @@ def lz77(data):
 
 def he(data):
     counter = Counter(data)
-    heap = [(counter[i], i, i) for i in range(16)]
+    heap = [(count, i, value) for (i, (value, count)) in enumerate(counter.items())]
     heapq.heapify(heap)
     while len(heap) > 1:
         c1, _, v1 = heapq.heappop(heap)
@@ -130,10 +130,8 @@ def output_huffman(form, perm):
     print("{")
     byte_encode(list(form))
     print(",{")
-    startb = True
     for x in perm:
-        print(("0x%X" if startb else "%X,") % x, end="")
-        startb = not startb
+        print("0x%02X," % x, end="")
     print("}};")
 
 

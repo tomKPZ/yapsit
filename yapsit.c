@@ -30,45 +30,44 @@ static bool read_bit(BitstreamContext *bitstream) {
 }
 
 static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
-                           uint8_t i, uint8_t **perm) {
+                           uint8_t i, const uint8_t **perm,
+                           HuffmanBranch *parent) {
   if (read_bit(bits)) {
-    nodes[i].is_leaf = true;
-    nodes[i].data.val = **perm;
+    parent->is_leaf = true;
+    parent->value = **perm;
     (*perm)++;
-    return i;
+    return 0;
   }
-  uint8_t l = decode_node(bits, nodes, i, perm);
-  uint8_t r = decode_node(bits, nodes, l + 1, perm);
-  i = r + 1;
-  nodes[i].is_leaf = false;
-  nodes[i].data.node.l = l;
-  nodes[i].data.node.r = r;
-  return i;
+  parent->is_leaf = false;
+  parent->value = i;
+  uint8_t l = decode_node(bits, nodes, i + 1, perm, &nodes[i].l);
+  uint8_t r = decode_node(bits, nodes, i + 1 + l, perm, &nodes[i].r);
+  return l + r + 1;
 }
 
 static void huffman_init(HuffmanContext *context, const HuffmanHeader *header,
                          const uint8_t *bits, size_t offset) {
-  uint8_t perms[16];
-  for (int i = 0; i < 8; i++) {
-    perms[2 * i] = header->perm[i] >> 4;
-    perms[2 * i + 1] = header->perm[i] & 0x0F;
-  }
   BitstreamContext bitstream = {header->form, 0};
-  uint8_t *perm = perms;
-  decode_node(&bitstream, context->nodes, 0, &perm);
+  const uint8_t *perm = header->perm;
+  HuffmanBranch dummy;
+  uint8_t i = decode_node(&bitstream, context->nodes, 0, &perm, &dummy);
   context->bits.bits = bits;
   context->bits.offset = offset;
 }
 
 static uint8_t huffman_decode(HuffmanContext *context) {
-  HuffmanNode *node = &context->nodes[30];
-  while (!node->is_leaf) {
-    if (read_bit(&context->bits))
-      node = &context->nodes[node->data.node.r];
-    else
-      node = &context->nodes[node->data.node.l];
+  HuffmanNode *node = context->nodes;
+  while (true) {
+    if (read_bit(&context->bits)) {
+      if (node->r.is_leaf)
+        return node->r.value;
+      node = &context->nodes[node->r.value];
+    } else {
+      if (node->l.is_leaf)
+        return node->l.value;
+      node = &context->nodes[node->l.value];
+    }
   }
-  return node->data.val;
 }
 
 static bool A(uint16_t c) { return c >> 15; }
