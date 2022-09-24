@@ -27,7 +27,7 @@ SPRITES = [
 ]
 
 Huffman = namedtuple("Huffman", ["bits", "form", "perm", "data2bits"])
-Lz77 = namedtuple("Lz77", ["deltas", "runlen", "values"])
+Lz77 = namedtuple("Lz77", ["dys", "dxs", "runlen", "values"])
 
 
 def pixel(sprite, x, y):
@@ -51,22 +51,29 @@ def create_colormap(sprite, shiny):
     return colormap
 
 
-def lz77(data):
+def lz77(data, width):
     n = len(data)
     dp = [0] * n
     for i in reversed(range(n)):
-        size, lst = dp[i + 1] if i + 1 < n else (0, None)
-        ans = (size + 1, ((0, 0, data[i]), lst))
-        for j in range(max(0, i - 255), i):
+        j = i
+        while j + 1 < n and data[j + 1] == data[i]:
+            j += 1
+        size, lst = dp[j + 1] if j + 1 < n else (0, None)
+        ans = (size + 1, ((0, 128, j - i + 1, data[i]), lst))
+        for j in range(i):
             for k in range(j, min(i, n - i + j)):
                 if data[k] != data[i + k - j]:
                     break
                 runlen = k - j + 1
-                delta = i - j
+                y1, x1 = divmod(j, width)
+                y2, x2 = divmod(i, width)
+                dy, dx = y2 - y1, x2 - x1 + 128
+                if not (0 <= dx < 256 and 0 <= dy < 256):
+                    continue
                 index = i + runlen + 1
                 lstlen, lst = dp[index] if index < n else (0, None)
                 nxt = data[i + runlen] if i + runlen < n else None
-                ans = min(ans, (1 + lstlen, ((delta, runlen, nxt), lst)))
+                ans = min(ans, (1 + lstlen, ((dy, dx, runlen, nxt), lst)))
         dp[i] = ans
 
     node = dp[0][1]
@@ -161,7 +168,8 @@ for gen, game, max_id, has_shiny in SPRITES:
             for x in range(xl, xh):
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
                 image.append(colormap[color])
-        images.append(((xh - xl, yh - yl), colormap, lz77(image)))
+        width = xh - xl
+        images.append(((width, yh - yl), colormap, lz77(image, width)))
 
 all_streams = defaultdict(list)
 for _, _, streams in images:
@@ -185,8 +193,11 @@ for size, colormap, streams in images:
     print("},")
 print("};")
 print("const size_t n_sprites = %s;" % len(images))
-print("const uint8_t deltas_bits[] =")
-byte_encode(lz.deltas.bits)
+print("const uint8_t dys_bits[] =")
+byte_encode(lz.dys.bits)
+print(";")
+print("const uint8_t dxs_bits[] =")
+byte_encode(lz.dxs.bits)
 print(";")
 print("const uint8_t runlen_bits[] =")
 byte_encode(lz.runlen.bits)
@@ -194,8 +205,10 @@ print(";")
 print("const uint8_t values_bits[] =")
 byte_encode(lz.values.bits)
 print(";")
-print("const HuffmanHeader deltas_header =")
-output_huffman(lz.deltas.form, lz.deltas.perm)
+print("const HuffmanHeader dys_header =")
+output_huffman(lz.dys.form, lz.dys.perm)
+print("const HuffmanHeader dxs_header =")
+output_huffman(lz.dxs.form, lz.dxs.perm)
 print("const HuffmanHeader runlen_header =")
 output_huffman(lz.runlen.form, lz.runlen.perm)
 print("const HuffmanHeader values_header =")

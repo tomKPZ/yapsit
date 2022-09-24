@@ -35,7 +35,8 @@ typedef struct {
   uint8_t h;
   uint16_t colormap[15];
   uint16_t shiny[15];
-  uint16_t deltas_size;
+  uint16_t dys_size;
+  uint16_t dxs_size;
   uint16_t runlen_size;
   uint16_t values_size;
 } Sprite;

@@ -12,10 +12,12 @@
 
 extern const Sprite sprites[];
 extern const size_t n_sprites;
-extern const uint8_t deltas_bits[];
+extern const uint8_t dys_bits[];
+extern const uint8_t dxs_bits[];
 extern const uint8_t runlen_bits[];
 extern const uint8_t values_bits[];
-extern const HuffmanHeader deltas_header;
+extern const HuffmanHeader dys_header;
+extern const HuffmanHeader dxs_header;
 extern const HuffmanHeader runlen_header;
 extern const HuffmanHeader values_header;
 
@@ -86,22 +88,26 @@ int main() {
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
   size_t n = 0;
-  size_t deltas_offset = 0;
+  size_t dys_offset = 0;
+  size_t dxs_offset = 0;
   size_t runlen_offset = 0;
   size_t values_offset = 0;
   const Sprite *sprite = NULL;
-  size_t sprite_deltas_offset = 0;
+  size_t sprite_dys_offset = 0;
+  size_t sprite_dxs_offset = 0;
   size_t sprite_runlen_offset = 0;
   size_t sprite_values_offset = 0;
   for (size_t i = 0; i < n_sprites; i++) {
     if (sprites[i].w <= w.ws_col && (sprites[i].h + 1) / 2 + 2 <= w.ws_row &&
         rand() % (++n) == 0) {
       sprite = &sprites[i];
-      sprite_deltas_offset = deltas_offset;
+      sprite_dys_offset = dys_offset;
+      sprite_dxs_offset = dxs_offset;
       sprite_runlen_offset = runlen_offset;
       sprite_values_offset = values_offset;
     }
-    deltas_offset += sprites[i].deltas_size;
+    dys_offset += sprites[i].dys_size;
+    dxs_offset += sprites[i].dxs_size;
     runlen_offset += sprites[i].runlen_size;
     values_offset += sprites[i].values_size;
   }
@@ -116,9 +122,10 @@ int main() {
   if (!buf)
     return 1;
   const uint8_t *image = buf;
-  HuffmanContext deltas_context;
-  huffman_init(&deltas_context, &deltas_header, deltas_bits,
-               sprite_deltas_offset);
+  HuffmanContext dys_context;
+  huffman_init(&dys_context, &dys_header, dys_bits, sprite_dys_offset);
+  HuffmanContext dxs_context;
+  huffman_init(&dxs_context, &dxs_header, dxs_bits, sprite_dxs_offset);
   HuffmanContext runlen_context;
   huffman_init(&runlen_context, &runlen_header, runlen_bits,
                sprite_runlen_offset);
@@ -126,11 +133,14 @@ int main() {
   huffman_init(&values_context, &values_header, values_bits,
                sprite_values_offset);
   while (buf - image < size) {
-    uint8_t delta = huffman_decode(&deltas_context);
+    uint8_t dy = huffman_decode(&dys_context);
+    int8_t dx = huffman_decode(&dxs_context) - 128;
+    uint16_t delta = (sprite->w * dy) + dx;
     uint8_t runlen = huffman_decode(&runlen_context);
     uint8_t value = huffman_decode(&values_context);
-    if (delta == 0 && runlen == 0) {
-      *(buf++) = value;
+    if (delta == 0) {
+      memset(buf, value, runlen);
+      buf += runlen;
       continue;
     }
     memcpy(buf, buf - delta, runlen);
