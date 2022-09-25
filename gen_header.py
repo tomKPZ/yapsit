@@ -25,9 +25,10 @@ SPRITES = [
     ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
+LZ77_FIELDS = ["dys", "dxs", "runlen", "values"]
 
 Huffman = namedtuple("Huffman", ["bits", "form", "perm", "data2bits"])
-Lz77 = namedtuple("Lz77", ["dys", "dxs", "runlen", "values"])
+Lz77 = namedtuple("Lz77", LZ77_FIELDS)
 
 
 def pixel(sprite, x, y):
@@ -51,7 +52,10 @@ def create_colormap(sprite, shiny):
     return colormap
 
 
-def lz77(data, width):
+def lz77(data, width, data2bits):
+    def nbits(output):
+        return sum(d2b[out] for out, d2b in zip(output, data2bits))
+
     n = len(data)
     dp = [0] * n
     for i in reversed(range(n)):
@@ -59,7 +63,8 @@ def lz77(data, width):
         while j + 1 < n and data[j + 1] == data[i]:
             j += 1
         size, lst = dp[j + 1] if j + 1 < n else (0, None)
-        ans = (size + 1, ((0, 128, j - i + 1, data[i]), lst))
+        out = (0, 128, j - i + 1, data[i])
+        ans = (size + nbits(out), (out, lst))
         for j in range(i):
             for k in range(j, min(i, n - i + j)):
                 if data[k] != data[i + k - j]:
@@ -71,9 +76,11 @@ def lz77(data, width):
                 if not (0 <= dx < 256 and 0 <= dy < 256):
                     continue
                 index = i + runlen + 1
-                lstlen, lst = dp[index] if index < n else (0, None)
-                nxt = data[i + runlen] if i + runlen < n else None
-                ans = min(ans, (1 + lstlen, ((dy, dx, runlen, nxt), lst)))
+                size, lst = dp[index] if index < n else (0, None)
+                # TODO: don't output nxt if i + runlen == n
+                nxt = data[i + runlen] if i + runlen < n else 0
+                out = (dy, dx, runlen, nxt)
+                ans = min(ans, (size + nbits(out), (out, lst)))
         dp[i] = ans
 
     node = dp[0][1]
@@ -87,7 +94,7 @@ def lz77(data, width):
 
 def he(data):
     counter = Counter(data)
-    heap = [(count, i, value) for (i, (value, count)) in enumerate(counter.items())]
+    heap = [(counter[i], i, i) for i in range(256)]
     heapq.heapify(heap)
     while len(heap) > 1:
         c1, _, v1 = heapq.heappop(heap)
@@ -100,6 +107,7 @@ def he(data):
     form = []
     perm = []
 
+    # TODO: only output non-zero counted values
     def dfs(node):
         if type(node) == int:
             form.append(1)
@@ -142,7 +150,7 @@ def output_huffman(form, perm):
     print("}};")
 
 
-images = []
+uncompressed_images = []
 for gen, game, max_id, has_shiny in SPRITES:
     sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
     shiny_dir = os.path.join(sprites_dir, "shiny")
@@ -169,13 +177,25 @@ for gen, game, max_id, has_shiny in SPRITES:
                 color = (pixel(sprite, x, y), pixel(shiny, x, y))
                 image.append(colormap[color])
         width = xh - xl
-        images.append(((width, yh - yl), colormap, lz77(image, width)))
+        uncompressed_images.append(((width, yh - yl), colormap, image))
 
-all_streams = defaultdict(list)
-for _, _, streams in images:
-    for i, stream in enumerate(streams):
-        all_streams[i].extend(list(stream))
-lz = Lz77(*(he(stream) for stream in all_streams.values()))
+d2bs = [[1] * 256] * len(LZ77_FIELDS)
+for _ in range(3):
+    images = []
+    for (w, h), colormap, uncompressed in uncompressed_images:
+        images.append(((w, h), colormap, lz77(uncompressed, w, d2bs)))
+
+    all_streams = defaultdict(list)
+    for _, _, streams in images:
+        for i, stream in enumerate(streams):
+            all_streams[i].extend(list(stream))
+    lz = Lz77(*(he(stream) for stream in all_streams.values()))
+    d2bs = []
+    size = 0
+    for huffman in lz:
+        size += len(huffman.bits)
+        d2bs.append([len(huffman.data2bits[d]) for d in range(256)])
+    print(size, file=sys.stderr)
 
 print('#include "types.h"')
 print("const Sprite sprites[] = {")
