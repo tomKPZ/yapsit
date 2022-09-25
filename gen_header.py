@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import heapq
-import multiprocessing
 import os
 import sys
 from collections import Counter, OrderedDict, defaultdict, namedtuple
+from functools import partial
+from multiprocessing import Pool
 
 import PIL.Image
 
@@ -17,13 +18,13 @@ VERSIONS_DIR = os.path.join(
     "versions",
 )
 SPRITES = [
-    ("generation-iii", "emerald", 386, True),
-    # ("generation-iii", "firered-leafgreen", 151, True),
+    # ("generation-iii", "emerald", 386, True),
+    ("generation-iii", "firered-leafgreen", 151, True),
     # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
-    ("generation-iv", "platinum", 493, True),
-    ("generation-v", "black-white", 650, True),
+    # ("generation-iv", "platinum", 493, True),
+    # ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
 LZ77_FIELDS = ["dys", "dxs", "runlen", "values"]
@@ -151,34 +152,40 @@ def output_huffman(form, perm):
     print("}};")
 
 
+def read_image(sprites_dir, shiny_dir, id):
+    basename = "%d.png" % (id + 1)
+    path = os.path.join(sprites_dir, basename)
+    sprite = PIL.Image.open(path).convert("RGBA")
+    if shiny_dir:
+        shiny_path = os.path.join(shiny_dir, basename)
+        shiny = PIL.Image.open(shiny_path).convert("RGBA")
+    else:
+        shiny = sprite
+
+    colormap = create_colormap(sprite, shiny)
+    if len(colormap) > 16:
+        print("Excess colors in sprite", path, file=sys.stderr)
+        # TODO: error handling
+
+    image = []
+    bbox = sprite.getbbox()
+    xl, yl, xh, yh = bbox
+    for y in range(yl, yh):
+        for x in range(xl, xh):
+            color = (pixel(sprite, x, y), pixel(shiny, x, y))
+            image.append(colormap[color])
+    width = xh - xl
+    return ((width, yh - yl), colormap, image)
+
+
+pool = Pool()
+
 uncompressed_images = []
 for gen, game, max_id, has_shiny in SPRITES:
     sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
-    shiny_dir = os.path.join(sprites_dir, "shiny")
-    for id in range(max_id):
-        basename = "%d.png" % (id + 1)
-        path = os.path.join(sprites_dir, basename)
-        sprite = PIL.Image.open(path).convert("RGBA")
-        if has_shiny:
-            shiny_path = os.path.join(shiny_dir, basename)
-            shiny = PIL.Image.open(shiny_path).convert("RGBA")
-        else:
-            shiny = sprite
-
-        colormap = create_colormap(sprite, shiny)
-        if len(colormap) > 16:
-            print("Excess colors in sprite", path, file=sys.stderr)
-            continue
-
-        image = []
-        bbox = sprite.getbbox()
-        xl, yl, xh, yh = bbox
-        for y in range(yl, yh):
-            for x in range(xl, xh):
-                color = (pixel(sprite, x, y), pixel(shiny, x, y))
-                image.append(colormap[color])
-        width = xh - xl
-        uncompressed_images.append(((width, yh - yl), colormap, image))
+    shiny_dir = os.path.join(sprites_dir, "shiny") if has_shiny else None
+    read = partial(read_image, sprites_dir, shiny_dir)
+    uncompressed_images.extend(pool.map(read, range(max_id)))
 
 d2bs = [[1] * 256] * len(LZ77_FIELDS)
 for _ in range(3):
@@ -187,7 +194,7 @@ for _ in range(3):
         (w, h), colormap, uncompressed = uncompressed_image
         return ((w, h), colormap, lz77(uncompressed, w, d2bs))
 
-    pool = multiprocessing.Pool()
+    pool = Pool()
     images = pool.map(compress, uncompressed_images)
 
     all_streams = defaultdict(list)
