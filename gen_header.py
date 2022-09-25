@@ -19,7 +19,7 @@ VERSIONS_DIR = os.path.join(
 )
 SPRITES = [
     # ("generation-iii", "emerald", 386, True),
-    ("generation-iii", "firered-leafgreen", 151, True),
+    ("generation-iii", "firered-leafgreen", 1, True),
     # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
@@ -143,13 +143,13 @@ def byte_encode(bits):
     print("}")
 
 
-def output_huffman(form, perm):
+def output_huffman(form, perm, bits):
     print("{")
     byte_encode(list(form))
     print(",{")
     for x in perm:
         print("0x%02X," % x, end="")
-    print("}};")
+    print("}, %s}," % bits)
 
 
 def read_image(sprites_dir, shiny_dir, id):
@@ -178,70 +178,73 @@ def read_image(sprites_dir, shiny_dir, id):
     return ((width, yh - yl), colormap, image)
 
 
-pool = Pool()
+def read_images(pool):
+    images = []
+    for gen, game, max_id, has_shiny in SPRITES:
+        sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
+        shiny_dir = os.path.join(sprites_dir, "shiny") if has_shiny else None
+        read = partial(read_image, sprites_dir, shiny_dir)
+        images.extend(pool.map(read, range(max_id)))
+    return images
 
-uncompressed_images = []
-for gen, game, max_id, has_shiny in SPRITES:
-    sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
-    shiny_dir = os.path.join(sprites_dir, "shiny") if has_shiny else None
-    read = partial(read_image, sprites_dir, shiny_dir)
-    uncompressed_images.extend(pool.map(read, range(max_id)))
 
-d2bs = [[1] * 256] * len(LZ77_FIELDS)
-for _ in range(3):
+def compress_image(d2bs, uncompressed_image):
+    (w, h), colormap, uncompressed = uncompressed_image
+    return ((w, h), colormap, lz77(uncompressed, w, d2bs))
 
-    def compress(uncompressed_image):
-        (w, h), colormap, uncompressed = uncompressed_image
-        return ((w, h), colormap, lz77(uncompressed, w, d2bs))
 
+def compress_images(uncompressed_images, pool):
+    d2bs = [[1] * 256] * len(LZ77_FIELDS)
+    for _ in range(3):
+        images = pool.map(partial(compress_image, d2bs), uncompressed_images)
+
+        all_streams = defaultdict(list)
+        for _, _, streams in images:
+            for i, stream in enumerate(streams):
+                all_streams[i].extend(list(stream))
+        lz = Lz77(*pool.map(he, all_streams.values()))
+        d2bs = []
+        size = 0
+        for huffman in lz:
+            size += len(huffman.bits)
+            d2bs.append([len(huffman.data2bits[d]) for d in range(256)])
+        print("%.3fKB" % ((size + 7) // 8 / 1000), file=sys.stderr)
+    return images, lz
+
+
+def output(images, lz):
+    print('#include "types.h"')
+    print("const Sprite sprites[] = {")
+    for size, colormap, streams in images:
+        print("{%d,%d,{" % size, end="")
+        for (color, _) in list(colormap)[1:]:
+            print("0x%04X," % color, end="")
+        print("},{")
+        for (_, color) in list(colormap)[1:]:
+            print("0x%04X," % color, end="")
+        print("},")
+        for stream, huffman in zip(streams, lz):
+            size = sum(len(huffman.data2bits[x]) for x in stream)
+            print("%d," % size)
+        print("},")
+    print("};")
+    print("const size_t n_sprites = %s;" % len(images))
+    for name, field in zip(LZ77_FIELDS, lz):
+        print("static const uint8_t %s_bits[] =" % name)
+        byte_encode(field.bits)
+        print(";")
+    print('const Lz77Header lz77 = {')
+    for name, field in zip(LZ77_FIELDS, lz):
+        output_huffman(field.form, field.perm, "%s_bits" % name)
+    print('};')
+
+
+def main():
     pool = Pool()
-    images = pool.map(compress, uncompressed_images)
+    uncompressed_images = read_images(pool)
+    images, lz = compress_images(uncompressed_images, pool)
+    output(images, lz)
 
-    all_streams = defaultdict(list)
-    for _, _, streams in images:
-        for i, stream in enumerate(streams):
-            all_streams[i].extend(list(stream))
-    lz = Lz77(*pool.map(he, all_streams.values()))
-    d2bs = []
-    size = 0
-    for huffman in lz:
-        size += len(huffman.bits)
-        d2bs.append([len(huffman.data2bits[d]) for d in range(256)])
-    print("%.3fKB" % ((size + 7) // 8 / 1000), file=sys.stderr)
 
-print('#include "types.h"')
-print("const Sprite sprites[] = {")
-for size, colormap, streams in images:
-    print("{%d,%d,{" % size, end="")
-    for (color, _) in list(colormap)[1:]:
-        print("0x%04X," % color, end="")
-    print("},{")
-    for (_, color) in list(colormap)[1:]:
-        print("0x%04X," % color, end="")
-    print("},")
-    for stream, huffman in zip(streams, lz):
-        size = sum(len(huffman.data2bits[x]) for x in stream)
-        print("%d," % size)
-    print("},")
-print("};")
-print("const size_t n_sprites = %s;" % len(images))
-print("const uint8_t dys_bits[] =")
-byte_encode(lz.dys.bits)
-print(";")
-print("const uint8_t dxs_bits[] =")
-byte_encode(lz.dxs.bits)
-print(";")
-print("const uint8_t runlen_bits[] =")
-byte_encode(lz.runlen.bits)
-print(";")
-print("const uint8_t values_bits[] =")
-byte_encode(lz.values.bits)
-print(";")
-print("const HuffmanHeader dys_header =")
-output_huffman(lz.dys.form, lz.dys.perm)
-print("const HuffmanHeader dxs_header =")
-output_huffman(lz.dxs.form, lz.dxs.perm)
-print("const HuffmanHeader runlen_header =")
-output_huffman(lz.runlen.form, lz.runlen.perm)
-print("const HuffmanHeader values_header =")
-output_huffman(lz.values.form, lz.values.perm)
+if __name__ == "__main__":
+    main()

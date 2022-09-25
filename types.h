@@ -8,7 +8,15 @@
 typedef struct {
   uint8_t form[64];
   uint8_t perm[256];
+  const uint8_t *bits;
 } HuffmanHeader;
+
+typedef struct {
+  const HuffmanHeader dys;
+  const HuffmanHeader dxs;
+  const HuffmanHeader runlen;
+  const HuffmanHeader values;
+} Lz77Header;
 
 typedef struct {
   bool is_leaf;
