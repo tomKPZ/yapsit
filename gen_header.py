@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import heapq
+import multiprocessing
 import os
 import sys
 from collections import Counter, OrderedDict, defaultdict, namedtuple
@@ -181,21 +182,25 @@ for gen, game, max_id, has_shiny in SPRITES:
 
 d2bs = [[1] * 256] * len(LZ77_FIELDS)
 for _ in range(3):
-    images = []
-    for (w, h), colormap, uncompressed in uncompressed_images:
-        images.append(((w, h), colormap, lz77(uncompressed, w, d2bs)))
+
+    def compress(uncompressed_image):
+        (w, h), colormap, uncompressed = uncompressed_image
+        return ((w, h), colormap, lz77(uncompressed, w, d2bs))
+
+    pool = multiprocessing.Pool()
+    images = pool.map(compress, uncompressed_images)
 
     all_streams = defaultdict(list)
     for _, _, streams in images:
         for i, stream in enumerate(streams):
             all_streams[i].extend(list(stream))
-    lz = Lz77(*(he(stream) for stream in all_streams.values()))
+    lz = Lz77(*pool.map(he, all_streams.values()))
     d2bs = []
     size = 0
     for huffman in lz:
         size += len(huffman.bits)
         d2bs.append([len(huffman.data2bits[d]) for d in range(256)])
-    print(size, file=sys.stderr)
+    print("%.3fKB" % ((size + 7) // 8 / 1000), file=sys.stderr)
 
 print('#include "types.h"')
 print("const Sprite sprites[] = {")
