@@ -41,8 +41,8 @@ typedef struct {
 typedef struct {
   uint8_t w;
   uint8_t h;
-  uint16_t colormap[15];
-  uint16_t shiny[15];
+  uint8_t colormap_size;
+  uint8_t shiny_size;
   uint16_t dys_size;
   uint16_t dxs_size;
   uint16_t runlen_size;

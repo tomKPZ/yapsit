@@ -13,6 +13,7 @@
 extern const Sprite sprites[];
 extern const size_t n_sprites;
 extern const Lz77Header lz77;
+extern const HuffmanHeader colormaps;
 
 #define FG "\033[38;2;%d;%d;%dm"
 #define BG "\033[48;2;%d;%d;%dm"
@@ -65,15 +66,6 @@ static uint8_t huffman_decode(HuffmanContext *context) {
   }
 }
 
-static bool A(uint16_t c) { return c >> 15; }
-static uint8_t R(uint16_t c) { return ((c >> 10) & 0b11111) * 8 * 255 / 248; }
-static uint8_t G(uint16_t c) { return ((c >> 5) & 0b11111) * 8 * 255 / 248; }
-static uint8_t B(uint16_t c) { return (c & 0b11111) * 8 * 255 / 248; }
-
-static uint16_t color(const uint16_t *colormap, uint8_t i) {
-  return i ? colormap[i - 1] : 0;
-}
-
 int main() {
   srand(*(unsigned int *)getauxval(AT_RANDOM));
 
@@ -83,22 +75,36 @@ int main() {
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offsets[4] = {0};
+  size_t color_offset = 0;
   size_t sprite_offsets[4] = {0};
+  size_t sprite_color_offset = 0;
+  size_t sprite_shiny_offset = 0;
   for (size_t i = 0; i < n_sprites; i++) {
     if (sprites[i].w <= w.ws_col && (sprites[i].h + 1) / 2 + 2 <= w.ws_row &&
         rand() % (++n) == 0) {
       sprite = &sprites[i];
       memcpy(sprite_offsets, offsets, sizeof(offsets));
+      sprite_color_offset = color_offset;
+      sprite_shiny_offset = color_offset + sprites[i].colormap_size;
     }
     const uint16_t *sizes = &sprites[i].dys_size;
     for (size_t j = 0; j < 4; j++)
       offsets[j] += sizes[j];
+    color_offset += sprites[i].colormap_size + sprites[i].shiny_size;
   }
   if (!sprite)
     return 1;
 
-  const uint16_t *colormap =
-      rand() % 16 == 0 ? sprite->shiny : sprite->colormap;
+  size_t colormap_offset =
+      rand() % 16 == 0 ? sprite_shiny_offset : sprite_color_offset;
+  uint8_t colormap[16][3];
+  memset(colormap[0], 0, sizeof(colormap[0]));
+  HuffmanContext color_context;
+  huffman_init(&color_context, &colormaps, colormap_offset);
+  for (size_t i = 1; i < 16; i++) {
+    for (size_t j = 0; j < 3; j++)
+      colormap[i][j] = huffman_decode(&color_context) * 8 * 255 / 248;
+  }
 
   size_t size = sprite->w * sprite->h;
   uint8_t *buf = malloc(size);
@@ -130,16 +136,18 @@ int main() {
 
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
-      uint16_t h = color(colormap, image[y * sprite->w + x]);
-      uint16_t l = 0;
+      uint8_t hi = image[y * sprite->w + x];
+      uint8_t li = 0;
       if (y + 1 < sprite->h)
-        l = color(colormap, image[(y + 1) * sprite->w + x]);
-      if (A(h) && A(l))
-        printf(BG FG "▄", R(h), G(h), B(h), R(l), G(l), B(l));
-      else if (A(h))
-        printf(FG "▀", R(h), G(h), B(h));
-      else if (A(l))
-        printf(FG "▄", R(l), G(l), B(l));
+        li = image[(y + 1) * sprite->w + x];
+      uint8_t *h = colormap[hi];
+      uint8_t *l = colormap[li];
+      if (hi && li)
+        printf(BG FG "▄", h[0], h[1], h[2], l[0], l[1], l[2]);
+      else if (hi)
+        printf(FG "▀", h[0], h[1], h[2]);
+      else if (li)
+        printf(FG "▄", l[0], l[1], l[2]);
       else
         printf(" ");
       printf("\033[m");
