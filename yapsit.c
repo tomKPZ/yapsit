@@ -10,10 +10,7 @@
 
 #include "types.h"
 
-extern const Sprite sprites[];
-extern const size_t n_sprites;
-extern const Lz77Header lz77;
-extern const HuffmanHeader colormaps;
+extern const Sprites sprites;
 
 #define FG "\033[38;2;%d;%d;%dm"
 #define BG "\033[48;2;%d;%d;%dm"
@@ -66,53 +63,50 @@ static uint8_t huffman_decode(HuffmanContext *context) {
   }
 }
 
-int main() {
-  srand(*(unsigned int *)getauxval(AT_RANDOM));
-
-  struct winsize w;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-
+const Sprite *choose_sprite(int max_w, int max_h, size_t *sprite_offsets,
+                            size_t *colormap_offsets) {
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offsets[4] = {0};
   size_t color_offset = 0;
-  size_t sprite_offsets[4] = {0};
-  size_t sprite_color_offset = 0;
-  size_t sprite_shiny_offset = 0;
-  for (size_t i = 0; i < n_sprites; i++) {
-    if (sprites[i].w <= w.ws_col && (sprites[i].h + 1) / 2 + 2 <= w.ws_row &&
+  const Sprite *images = sprites.images;
+  for (size_t i = 0; i < sprites.count; i++) {
+    if (images[i].w <= max_w && (images[i].h + 1) / 2 + 2 <= max_h &&
         rand() % (++n) == 0) {
-      sprite = &sprites[i];
+      sprite = &images[i];
       memcpy(sprite_offsets, offsets, sizeof(offsets));
-      sprite_color_offset = color_offset;
-      sprite_shiny_offset = color_offset + sprites[i].colormap_size;
+      colormap_offsets[0] = color_offset;
+      colormap_offsets[1] = color_offset + images[i].colormap_size;
     }
-    const uint16_t *sizes = &sprites[i].dys_size;
+    const uint16_t *sizes = &images[i].dys_size;
     for (size_t j = 0; j < 4; j++)
       offsets[j] += sizes[j];
-    color_offset += sprites[i].colormap_size + sprites[i].shiny_size;
+    color_offset += images[i].colormap_size + images[i].shiny_size;
   }
-  if (!sprite)
-    return 1;
+  return sprite;
+}
 
+void choose_colormap(const size_t colormap_offsets[], uint8_t colormap[16][3]) {
   size_t colormap_offset =
-      rand() % 16 == 0 ? sprite_shiny_offset : sprite_color_offset;
-  uint8_t colormap[16][3];
+      rand() % 16 == 0 ? colormap_offsets[1] : colormap_offsets[0];
   memset(colormap[0], 0, sizeof(colormap[0]));
   HuffmanContext color_context;
-  huffman_init(&color_context, &colormaps, colormap_offset);
+  huffman_init(&color_context, &sprites.colormaps, colormap_offset);
   for (size_t i = 1; i < 16; i++) {
     for (size_t j = 0; j < 3; j++)
       colormap[i][j] = huffman_decode(&color_context) * 8 * 255 / 248;
   }
+}
 
+uint8_t *decompress_image(const Sprite *sprite,
+                          const size_t sprite_offsets[4]) {
   size_t size = sprite->w * sprite->h;
   uint8_t *buf = malloc(size);
   if (!buf)
-    return 1;
-  const uint8_t *image = buf;
+    return NULL;
+  uint8_t *image = buf;
   HuffmanContext contexts[4];
-  const HuffmanHeader *headers = &lz77.dys;
+  const HuffmanHeader *headers = &sprites.lz77.dys;
   for (size_t i = 0; i < 4; i++)
     huffman_init(&contexts[i], &headers[i], sprite_offsets[i]);
   while (buf - image < size) {
@@ -133,15 +127,19 @@ int main() {
     if (buf - image < size)
       *(buf++) = value;
   }
+  return image;
+}
 
+void draw(const Sprite *sprite, const uint8_t *image,
+          const uint8_t colormap[16][3]) {
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
       uint8_t hi = image[y * sprite->w + x];
       uint8_t li = 0;
       if (y + 1 < sprite->h)
         li = image[(y + 1) * sprite->w + x];
-      uint8_t *h = colormap[hi];
-      uint8_t *l = colormap[li];
+      const uint8_t *h = colormap[hi];
+      const uint8_t *l = colormap[li];
       if (hi && li)
         printf(BG FG "▄", h[0], h[1], h[2], l[0], l[1], l[2]);
       else if (hi)
@@ -154,5 +152,30 @@ int main() {
     }
     printf("\n");
   }
+}
+
+int main() {
+  srand(*(unsigned int *)getauxval(AT_RANDOM));
+
+  struct winsize term_size;
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
+
+  size_t sprite_offsets[4] = {0};
+  size_t colormap_offsets[2] = {0};
+  const Sprite *sprite = choose_sprite(term_size.ws_col, term_size.ws_row,
+                                       sprite_offsets, colormap_offsets);
+  if (sprite == NULL)
+    return 1;
+
+  uint8_t colormap[16][3];
+  choose_colormap(colormap_offsets, colormap);
+
+  uint8_t *image = decompress_image(sprite, sprite_offsets);
+  if (image == NULL)
+    return 1;
+
+  draw(sprite, image, colormap);
+
+  free(image);
   return 0;
 }

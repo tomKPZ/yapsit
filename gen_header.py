@@ -19,12 +19,12 @@ VERSIONS_DIR = os.path.join(
 )
 SPRITES = [
     # ("generation-iii", "emerald", 386, True),
-    ("generation-iii", "firered-leafgreen", 10, True),
-    # ("generation-iii", "ruby-sapphire", 386, True),
+    # ("generation-iii", "firered-leafgreen", 151, True),
+    ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
-    # ("generation-iv", "platinum", 493, True),
-    # ("generation-v", "black-white", 650, True),
+    ("generation-iv", "platinum", 493, True),
+    ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
 LZ77_FIELDS = ["dys", "dxs", "runlen", "values"]
@@ -33,11 +33,15 @@ Huffman = namedtuple("Huffman", ["bits", "form", "perm", "data2bits"])
 Lz77 = namedtuple("Lz77", LZ77_FIELDS)
 
 
-def pixel(sprite, x, y):
-    r, g, b, a = sprite.getpixel((x, y))
-    if not a:
-        return None
-    return (r // 8, g // 8, b // 8)
+def pixel(sprite, shiny, x, y):
+    r1, g1, b1, a1 = sprite.getpixel((x, y))
+    r2, g2, b2, a2 = shiny.getpixel((x, y))
+    if not a1 and not a2:
+        return None, None
+    # Some gen 3 sprites have inaccurate alpha channels.
+    if not a1 or not a2:
+        raise Exception("Bad alpha channel")
+    return (r1 // 8, g1 // 8, b1 // 8), (r2 // 8, g2 // 8, b2 // 8)
 
 
 def create_colormap(sprite, shiny):
@@ -45,8 +49,9 @@ def create_colormap(sprite, shiny):
     n, m = sprite.size
     for y in range(m):
         for x in range(n):
-            color = (pixel(sprite, x, y), pixel(shiny, x, y))
-            counter[color] -= 1
+            counter[pixel(sprite, shiny, x, y)] -= 1
+    if len(counter) > 16:
+        raise Exception("Excess colors in palette")
     del counter[(None, None)]
     colormap = OrderedDict({(None, None): 0})
     for count, color in sorted(zip(counter.values(), counter.keys())):
@@ -162,17 +167,18 @@ def read_image(sprites_dir, shiny_dir, id):
     else:
         shiny = sprite
 
-    colormap = create_colormap(sprite, shiny)
-    if len(colormap) > 16:
-        print("Excess colors in sprite", path, file=sys.stderr)
-        # TODO: error handling
+    try:
+        colormap = create_colormap(sprite, shiny)
+    except Exception as e:
+        print(e, "in", path, file=sys.stderr)
+        return None
 
     image = []
     bbox = sprite.getbbox()
     xl, yl, xh, yh = bbox
     for y in range(yl, yh):
         for x in range(xl, xh):
-            color = (pixel(sprite, x, y), pixel(shiny, x, y))
+            color = pixel(sprite, shiny, x, y)
             image.append(colormap[color])
     width = xh - xl
     return ((width, yh - yl), colormap, image)
@@ -184,7 +190,7 @@ def read_images(pool):
         sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
         shiny_dir = os.path.join(sprites_dir, "shiny") if has_shiny else None
         read = partial(read_image, sprites_dir, shiny_dir)
-        images.extend(pool.map(read, range(max_id)))
+        images.extend(x for x in pool.map(read, range(max_id)) if x)
     return images
 
 
@@ -230,7 +236,7 @@ def compress_images(uncompressed_images, pool):
 
 def output(images, colors, lz):
     print('#include "types.h"')
-    print("const Sprite sprites[] = {")
+    print("static const Sprite sprite_data[] = {")
     for size, color_sizes, streams in images:
         print("{%d,%d," % size)
         for color_size in color_sizes:
@@ -240,23 +246,23 @@ def output(images, colors, lz):
             print("%d," % size)
         print("},")
     print("};")
-    print("const size_t n_sprites = %s;" % len(images))
     for name, field in zip(LZ77_FIELDS, lz):
         print("static const uint8_t %s_bits[] =" % name)
         byte_encode(field.bits)
         print(";")
-    print("const Lz77Header lz77 = {")
-    for name, field in zip(LZ77_FIELDS, lz):
-        output_huffman(field.form, field.perm, "%s_bits" % name)
-        print(",")
-    print("};")
-
     print("static const uint8_t colormap_bits[] =")
     byte_encode(colors.bits)
     print(";")
-    print("const HuffmanHeader colormaps =")
+    print("const Sprites sprites = {")
+    print("sprite_data,")
+    print("%d," % len(images))
+    print("{")
+    for name, field in zip(LZ77_FIELDS, lz):
+        output_huffman(field.form, field.perm, "%s_bits" % name)
+        print(",")
+    print("},")
     output_huffman(colors.form, colors.perm, "colormap_bits")
-    print(";")
+    print("};")
 
 
 def main():

@@ -49,4 +49,11 @@ typedef struct {
   uint16_t values_size;
 } Sprite;
 
+typedef struct {
+  const Sprite *images;
+  const size_t count;
+  const Lz77Header lz77;
+  const HuffmanHeader colormaps;
+} Sprites;
+
 #endif
