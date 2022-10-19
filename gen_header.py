@@ -19,12 +19,12 @@ VERSIONS_DIR = os.path.join(
 )
 SPRITES = [
     # ("generation-iii", "emerald", 386, True),
-    # ("generation-iii", "firered-leafgreen", 151, True),
-    ("generation-iii", "ruby-sapphire", 386, True),
+    ("generation-iii", "firered-leafgreen", 5, True),
+    # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
-    ("generation-iv", "platinum", 493, True),
-    ("generation-v", "black-white", 650, True),
+    # ("generation-iv", "platinum", 493, True),
+    # ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
 LZ77_FIELDS = ["dys", "dxs", "runlen", "values"]
@@ -54,7 +54,7 @@ def create_colormap(sprite, shiny):
         raise Exception("Excess colors in palette")
     del counter[(None, None)]
     colormap = OrderedDict({(None, None): 0})
-    for count, color in sorted(zip(counter.values(), counter.keys())):
+    for _, color in sorted(zip(counter.values(), counter.keys())):
         colormap[color] = len(colormap)
     return colormap
 
@@ -64,7 +64,7 @@ def lz77(data, width, data2bits):
         return sum(d2b[out] for out, d2b in zip(output, data2bits))
 
     n = len(data)
-    dp = [0] * n
+    dp = [(0, 0)] * n
     for i in reversed(range(n)):
         j = i
         while j + 1 < n and data[j + 1] == data[i]:

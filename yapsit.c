@@ -1,3 +1,4 @@
+#include <argp.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -63,8 +64,8 @@ static uint8_t huffman_decode(HuffmanContext *context) {
   }
 }
 
-const Sprite *choose_sprite(int max_w, int max_h, size_t *sprite_offsets,
-                            size_t *colormap_offsets) {
+static const Sprite *choose_sprite(int max_w, int max_h, size_t *sprite_offsets,
+                                   size_t *colormap_offsets) {
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offsets[4] = {0};
@@ -86,7 +87,8 @@ const Sprite *choose_sprite(int max_w, int max_h, size_t *sprite_offsets,
   return sprite;
 }
 
-void choose_colormap(const size_t colormap_offsets[], uint8_t colormap[16][3]) {
+static void choose_colormap(const size_t colormap_offsets[],
+                            uint8_t colormap[16][3]) {
   size_t colormap_offset =
       rand() % 16 == 0 ? colormap_offsets[1] : colormap_offsets[0];
   memset(colormap[0], 0, sizeof(colormap[0]));
@@ -98,8 +100,8 @@ void choose_colormap(const size_t colormap_offsets[], uint8_t colormap[16][3]) {
   }
 }
 
-uint8_t *decompress_image(const Sprite *sprite,
-                          const size_t sprite_offsets[4]) {
+static uint8_t *decompress_image(const Sprite *sprite,
+                                 const size_t sprite_offsets[4]) {
   size_t size = sprite->w * sprite->h;
   uint8_t *buf = malloc(size);
   if (!buf)
@@ -130,8 +132,8 @@ uint8_t *decompress_image(const Sprite *sprite,
   return image;
 }
 
-void draw(const Sprite *sprite, const uint8_t *image,
-          const uint8_t colormap[16][3]) {
+static void draw(const Sprite *sprite, const uint8_t *image,
+                 const uint8_t colormap[16][3]) {
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
       uint8_t hi = image[y * sprite->w + x];
@@ -154,28 +156,87 @@ void draw(const Sprite *sprite, const uint8_t *image,
   }
 }
 
-int main() {
-  srand(*(unsigned int *)getauxval(AT_RANDOM));
+static struct argp_option options[] = {
+    {"test", 't', 0, 0, "Output all sprites."},
+    {0},
+};
 
-  struct winsize term_size;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
+struct arguments {
+  bool test;
+};
 
-  size_t sprite_offsets[4] = {0};
-  size_t colormap_offsets[2] = {0};
-  const Sprite *sprite = choose_sprite(term_size.ws_col, term_size.ws_row,
-                                       sprite_offsets, colormap_offsets);
-  if (sprite == NULL)
+static error_t parse_opt(int key, char *arg, struct argp_state *state) {
+  struct arguments *arguments = state->input;
+  switch (key) {
+  case 't':
+    arguments->test = true;
+  case ARGP_KEY_ARG:
+    return 0;
+  default:
+    return ARGP_ERR_UNKNOWN;
+  }
+  return 0;
+}
+
+static struct argp argp = {
+    options, parse_opt, 0, "Show a random pokemon sprite.", 0, 0, 0};
+
+int main(int argc, char *argv[]) {
+  struct arguments arguments;
+  arguments.test = false;
+  if (argp_parse(&argp, argc, argv, 0, 0, &arguments))
     return 1;
 
-  uint8_t colormap[16][3];
-  choose_colormap(colormap_offsets, colormap);
+  if (arguments.test) {
+    size_t offsets[4] = {0};
+    size_t color_offset = 0;
+    const Sprite *images = sprites.images;
+    for (size_t i = 0; i < sprites.count; i++) {
+      uint8_t *image = decompress_image(&images[i], offsets);
+      if (!image)
+        return 1;
+      for (size_t j = 0; j < 2; j++) {
+        size_t colormap_offset =
+            j ? color_offset + images[i].colormap_size : color_offset;
+        uint8_t colormap[16][3];
+        memset(colormap[0], 0, sizeof(colormap[0]));
+        HuffmanContext color_context;
+        huffman_init(&color_context, &sprites.colormaps, colormap_offset);
+        for (size_t i = 1; i < 16; i++) {
+          for (size_t j = 0; j < 3; j++)
+            colormap[i][j] = huffman_decode(&color_context) * 8 * 255 / 248;
+        }
+        draw(&images[i], image, colormap);
+      }
+      free(image);
 
-  uint8_t *image = decompress_image(sprite, sprite_offsets);
-  if (image == NULL)
-    return 1;
+      const uint16_t *sizes = &images[i].dys_size;
+      for (size_t j = 0; j < 4; j++)
+        offsets[j] += sizes[j];
+      color_offset += images[i].colormap_size + images[i].shiny_size;
+    }
+  } else {
+    srand(*(unsigned int *)getauxval(AT_RANDOM));
 
-  draw(sprite, image, colormap);
+    struct winsize term_size;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
 
-  free(image);
+    size_t sprite_offsets[4] = {0};
+    size_t colormap_offsets[2] = {0};
+    const Sprite *sprite = choose_sprite(term_size.ws_col, term_size.ws_row,
+                                         sprite_offsets, colormap_offsets);
+    if (sprite == NULL)
+      return 1;
+
+    uint8_t colormap[16][3];
+    choose_colormap(colormap_offsets, colormap);
+
+    uint8_t *image = decompress_image(sprite, sprite_offsets);
+    if (!image)
+      return 1;
+    draw(sprite, image, colormap);
+    free(image);
+  }
+
   return 0;
 }
