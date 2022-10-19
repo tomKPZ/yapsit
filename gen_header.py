@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
-import heapq
-import math
-import os
-import sys
 from collections import Counter, OrderedDict, defaultdict, namedtuple
 from functools import partial
+from heapq import heapify, heappop, heappush
+from math import ceil, log2
 from multiprocessing import Pool
+from os import path
+from sys import stderr
 
 import PIL.Image
 
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-VERSIONS_DIR = os.path.join(
+SCRIPT_DIR = path.dirname(path.realpath(__file__))
+VERSIONS_DIR = path.join(
     SCRIPT_DIR,
     "sprites",
     "sprites",
@@ -103,15 +103,15 @@ def he(data):
     total = sum(counter.values())
     for count in counter.values():
         p = count / total
-        shannon -= count * math.log2(p)
-    shannon = math.ceil(shannon)
+        shannon -= count * log2(p)
+    shannon = ceil(shannon)
 
     heap = [(counter[i], i, i) for i in range(256)]
-    heapq.heapify(heap)
+    heapify(heap)
     while len(heap) > 1:
-        c1, _, v1 = heapq.heappop(heap)
-        c2, _, v2 = heapq.heappop(heap)
-        heapq.heappush(heap, (c1 + c2, -len(heap), (v1, v2)))
+        c1, _, v1 = heappop(heap)
+        c2, _, v2 = heappop(heap)
+        heappush(heap, (c1 + c2, -len(heap), (v1, v2)))
     tree = heap[0][2]
 
     data2bits = {}
@@ -145,7 +145,7 @@ def he(data):
             (len(bits) - shannon) / 8,
             100 * (len(bits) / shannon - 1),
         ),
-        file=sys.stderr,
+        file=stderr,
     )
     return Huffman(bits, form, perm, data2bits)
 
@@ -174,10 +174,10 @@ def output_huffman(form, perm, bits):
 
 def read_image(sprites_dir, shiny_dir, id):
     basename = "%d.png" % (id + 1)
-    path = os.path.join(sprites_dir, basename)
-    sprite = PIL.Image.open(path).convert("RGBA")
+    pathname = path.join(sprites_dir, basename)
+    sprite = PIL.Image.open(pathname).convert("RGBA")
     if shiny_dir:
-        shiny_path = os.path.join(shiny_dir, basename)
+        shiny_path = path.join(shiny_dir, basename)
         shiny = PIL.Image.open(shiny_path).convert("RGBA")
     else:
         shiny = sprite
@@ -185,7 +185,7 @@ def read_image(sprites_dir, shiny_dir, id):
     try:
         colormap = create_colormap(sprite, shiny)
     except Exception as e:
-        print(e, "in", path, file=sys.stderr)
+        print(e, "in", pathname, file=stderr)
         return None
 
     image = []
@@ -202,8 +202,8 @@ def read_image(sprites_dir, shiny_dir, id):
 def read_images(pool):
     images = []
     for gen, game, max_id, has_shiny in SPRITES:
-        sprites_dir = os.path.join(VERSIONS_DIR, gen, game)
-        shiny_dir = os.path.join(sprites_dir, "shiny") if has_shiny else None
+        sprites_dir = path.join(VERSIONS_DIR, gen, game)
+        shiny_dir = path.join(sprites_dir, "shiny") if has_shiny else None
         read = partial(read_image, sprites_dir, shiny_dir)
         images.extend(x for x in pool.map(read, range(max_id)) if x)
     return images
@@ -245,7 +245,7 @@ def compress_images(uncompressed_images, pool):
         for huffman in lz:
             size += len(huffman.bits)
             d2bs.append([len(huffman.data2bits[d]) for d in range(256)])
-        print("%.3fKB" % ((size + 7) // 8 / 1000), file=sys.stderr)
+        print("%.3fKB" % ((size + 7) // 8 / 1000), file=stderr)
     return images, colors, lz
 
 
