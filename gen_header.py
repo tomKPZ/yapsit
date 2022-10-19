@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import heapq
+import math
 import os
 import sys
 from collections import Counter, OrderedDict, defaultdict, namedtuple
@@ -98,6 +99,13 @@ def lz77(data, width, data2bits):
 
 def he(data):
     counter = Counter(data)
+    shannon = 0
+    total = sum(counter.values())
+    for count in counter.values():
+        p = count / total
+        shannon -= count * math.log2(p)
+    shannon = math.ceil(shannon)
+
     heap = [(counter[i], i, i) for i in range(256)]
     heapq.heapify(heap)
     while len(heap) > 1:
@@ -129,6 +137,16 @@ def he(data):
 
     dfs(tree)
     bits = [y for x in data for y in data2bits[x]]
+    print(
+        "%d/%d (+%.1fB) (+%.2f%%)"
+        % (
+            len(bits),
+            shannon,
+            (len(bits) - shannon) / 8,
+            100 * (len(bits) / shannon - 1),
+        ),
+        file=sys.stderr,
+    )
     return Huffman(bits, form, perm, data2bits)
 
 
