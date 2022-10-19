@@ -66,15 +66,12 @@ def lz77(data, width, data2bits):
     n = len(data)
     dp = [(0, 0)] * n
     for i in reversed(range(n)):
-        j = i
-        while j + 1 < n and data[j + 1] == data[i]:
-            j += 1
-        size, lst = dp[j + 1] if j + 1 < n else (0, None)
-        out = (0, 128, j - i + 1, data[i])
+        size, lst = dp[i + 1] if i + 1 < n else (0, None)
+        out = (0, 128, 1, data[i])
         ans = (size + nbits(out), (out, lst))
         for j in range(i):
-            for k in range(j, min(i, n - i + j)):
-                if data[k] != data[i + k - j]:
+            for k in range(j, n - i + j):
+                if data[k] != data[k + i - j]:
                     break
                 runlen = k - j + 1
                 y1, x1 = divmod(j, width)

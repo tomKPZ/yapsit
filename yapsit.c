@@ -120,11 +120,12 @@ static uint8_t *decompress_image(const Sprite *sprite,
 
     uint16_t delta = (sprite->w * dy) + dx - 128;
     if (delta == 0) {
-      memset(buf, value, runlen);
-      buf += runlen;
+      *(buf++) = value;
       continue;
     }
-    memcpy(buf, buf - delta, runlen);
+    // Manual copy instead of memcpy/memmove to handle overlapping ranges.
+    for (size_t i = 0; i < runlen; i++)
+      buf[i] = buf[i - delta];
     buf += runlen;
     if (buf - image < size)
       *(buf++) = value;
