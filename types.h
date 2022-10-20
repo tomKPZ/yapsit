@@ -8,7 +8,6 @@
 typedef struct {
   uint8_t form[64];
   uint8_t perm[256];
-  const uint8_t *bits;
 } HuffmanHeader;
 
 typedef struct {
@@ -35,18 +34,12 @@ typedef struct {
 
 typedef struct {
   HuffmanNode nodes[256];
-  BitstreamContext bits;
 } HuffmanContext;
 
 typedef struct {
   uint8_t w;
   uint8_t h;
-  uint8_t colormap_size;
-  uint8_t shiny_size;
-  uint16_t dys_size;
-  uint16_t dxs_size;
-  uint16_t runlen_size;
-  uint16_t values_size;
+  uint16_t bitlen;
 } Sprite;
 
 typedef struct {
@@ -54,6 +47,7 @@ typedef struct {
   const size_t count;
   const Lz77Header lz77;
   const HuffmanHeader colormaps;
+  const uint8_t *bitstream;
 } Sprites;
 
 #endif

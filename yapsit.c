@@ -39,20 +39,18 @@ static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
   return l + r + 1;
 }
 
-static void huffman_init(HuffmanContext *context, const HuffmanHeader *header,
-                         size_t offset) {
+static void huffman_init(HuffmanContext *context, const HuffmanHeader *header) {
   BitstreamContext bitstream = {header->form, 0};
   const uint8_t *perm = header->perm;
   HuffmanBranch dummy;
   uint8_t i = decode_node(&bitstream, context->nodes, 0, &perm, &dummy);
-  context->bits.bits = header->bits;
-  context->bits.offset = offset;
 }
 
-static uint8_t huffman_decode(HuffmanContext *context) {
+static uint8_t huffman_decode(HuffmanContext *context,
+                              BitstreamContext *bitstream) {
   HuffmanNode *node = context->nodes;
   while (true) {
-    if (read_bit(&context->bits)) {
+    if (read_bit(bitstream)) {
       if (node->r.is_leaf)
         return node->r.value;
       node = &context->nodes[node->r.value];
@@ -64,44 +62,40 @@ static uint8_t huffman_decode(HuffmanContext *context) {
   }
 }
 
-static const Sprite *choose_sprite(int max_w, int max_h, size_t *sprite_offsets,
-                                   size_t *colormap_offsets) {
+static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset) {
   size_t n = 0;
   const Sprite *sprite = NULL;
-  size_t offsets[4] = {0};
-  size_t color_offset = 0;
+  size_t offset = 0;
   const Sprite *images = sprites.images;
   for (size_t i = 0; i < sprites.count; i++) {
     if (images[i].w <= max_w && (images[i].h + 1) / 2 + 2 <= max_h &&
         rand() % (++n) == 0) {
       sprite = &images[i];
-      memcpy(sprite_offsets, offsets, sizeof(offsets));
-      colormap_offsets[0] = color_offset;
-      colormap_offsets[1] = color_offset + images[i].colormap_size;
+      *bit_offset = offset;
     }
-    const uint16_t *sizes = &images[i].dys_size;
-    for (size_t j = 0; j < 4; j++)
-      offsets[j] += sizes[j];
-    color_offset += images[i].colormap_size + images[i].shiny_size;
+    offset += sprite->bitlen;
   }
   return sprite;
 }
 
-static void choose_colormap(const size_t colormap_offsets[],
+static void choose_colormap(BitstreamContext *bitstream, uint8_t colormap_max,
                             uint8_t colormap[16][3]) {
-  size_t colormap_offset =
-      rand() % 16 == 0 ? colormap_offsets[1] : colormap_offsets[0];
   memset(colormap[0], 0, sizeof(colormap[0]));
   HuffmanContext color_context;
-  huffman_init(&color_context, &sprites.colormaps, colormap_offset);
-  for (size_t i = 1; i < 16; i++) {
-    for (size_t j = 0; j < 3; j++)
-      colormap[i][j] = huffman_decode(&color_context) * 8 * 255 / 248;
+  huffman_init(&color_context, &sprites.colormaps);
+  size_t cmaps = rand() % 16 == 0 ? 2 : 1;
+  for (size_t cmap = 0; cmap < cmaps; cmap++) {
+    for (size_t i = 1; i < colormap_max + 1; i++) {
+      for (size_t j = 0; j < 3; j++)
+        colormap[i][j] =
+            huffman_decode(&color_context, bitstream) * 8 * 255 / 248;
+    }
   }
 }
 
 static uint8_t *decompress_image(const Sprite *sprite,
-                                 const size_t sprite_offsets[4]) {
+                                 BitstreamContext *bitstream,
+                                 uint8_t *colormap_max) {
   size_t size = sprite->w * sprite->h;
   uint8_t *buf = malloc(size);
   if (!buf)
@@ -110,13 +104,16 @@ static uint8_t *decompress_image(const Sprite *sprite,
   HuffmanContext contexts[4];
   const HuffmanHeader *headers = &sprites.lz77.dys;
   for (size_t i = 0; i < 4; i++)
-    huffman_init(&contexts[i], &headers[i], sprite_offsets[i]);
+    huffman_init(&contexts[i], &headers[i]);
+  *colormap_max = 0;
   while (buf - image < size) {
-    uint8_t decoded[4];
-    for (size_t i = 0; i < 4; i++)
-      decoded[i] = huffman_decode(&contexts[i]);
-    uint8_t dy = decoded[0], dx = decoded[1], runlen = decoded[2],
-            value = decoded[3];
+    uint8_t dy = huffman_decode(&contexts[0], bitstream);
+    uint8_t dx = huffman_decode(&contexts[1], bitstream);
+    uint8_t runlen = huffman_decode(&contexts[2], bitstream);
+    uint8_t value = huffman_decode(&contexts[3], bitstream);
+
+    if (value > *colormap_max)
+      *colormap_max = value;
 
     uint16_t delta = (sprite->w * dy) + dx - 128;
     if (delta == 0) {
@@ -189,52 +186,54 @@ int main(int argc, char *argv[]) {
     return 1;
 
   if (arguments.test) {
-    size_t offsets[4] = {0};
-    size_t color_offset = 0;
-    const Sprite *images = sprites.images;
-    for (size_t i = 0; i < sprites.count; i++) {
-      uint8_t *image = decompress_image(&images[i], offsets);
-      if (!image)
-        return 1;
-      for (size_t j = 0; j < 2; j++) {
-        size_t colormap_offset =
-            j ? color_offset + images[i].colormap_size : color_offset;
-        uint8_t colormap[16][3];
-        memset(colormap[0], 0, sizeof(colormap[0]));
-        HuffmanContext color_context;
-        huffman_init(&color_context, &sprites.colormaps, colormap_offset);
-        for (size_t i = 1; i < 16; i++) {
-          for (size_t j = 0; j < 3; j++)
-            colormap[i][j] = huffman_decode(&color_context) * 8 * 255 / 248;
-        }
-        draw(&images[i], image, colormap);
-      }
-      free(image);
-
-      const uint16_t *sizes = &images[i].dys_size;
-      for (size_t j = 0; j < 4; j++)
-        offsets[j] += sizes[j];
-      color_offset += images[i].colormap_size + images[i].shiny_size;
-    }
+    // size_t offsets[4] = {0};
+    // size_t color_offset = 0;
+    // const Sprite *images = sprites.images;
+    // for (size_t i = 0; i < sprites.count; i++) {
+    //   uint8_t *image = decompress_image(&images[i], offsets);
+    //   if (!image)
+    //     return 1;
+    //   for (size_t j = 0; j < 2; j++) {
+    //     size_t colormap_offset =
+    //         j ? color_offset + images[i].colormap_max : color_offset;
+    //     uint8_t colormap[16][3];
+    //     memset(colormap[0], 0, sizeof(colormap[0]));
+    //     HuffmanContext color_context;
+    //     huffman_init(&color_context, &sprites.colormaps, colormap_offset);
+    //     for (size_t i = 1; i < 16; i++) {
+    //       for (size_t j = 0; j < 3; j++)
+    //         colormap[i][j] = huffman_decode(&color_context) * 8 * 255 / 248;
+    //     }
+    //     draw(&images[i], image, colormap);
+    //   }
+    //   free(image);
+    //
+    //   const uint16_t *sizes = &images[i].dys_size;
+    //   for (size_t j = 0; j < 4; j++)
+    //     offsets[j] += sizes[j];
+    //   color_offset += images[i].colormap_max + images[i].shiny_size;
+    // }
   } else {
     srand(*(unsigned int *)getauxval(AT_RANDOM));
 
     struct winsize term_size;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
 
-    size_t sprite_offsets[4] = {0};
-    size_t colormap_offsets[2] = {0};
-    const Sprite *sprite = choose_sprite(term_size.ws_col, term_size.ws_row,
-                                         sprite_offsets, colormap_offsets);
+    size_t offset;
+    const Sprite *sprite =
+        choose_sprite(term_size.ws_col, term_size.ws_row, &offset);
     if (sprite == NULL)
+      return 1;
+    BitstreamContext bitstream = {sprites.bitstream, offset};
+
+    uint8_t colormap_max;
+    uint8_t *image = decompress_image(sprite, &bitstream, &colormap_max);
+    if (!image)
       return 1;
 
     uint8_t colormap[16][3];
-    choose_colormap(colormap_offsets, colormap);
+    choose_colormap(&bitstream, colormap_max, colormap);
 
-    uint8_t *image = decompress_image(sprite, sprite_offsets);
-    if (!image)
-      return 1;
     draw(sprite, image, colormap);
     free(image);
   }

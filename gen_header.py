@@ -20,7 +20,7 @@ VERSIONS_DIR = path.join(
 )
 SPRITES = [
     # ("generation-iii", "emerald", 386, True),
-    ("generation-iii", "firered-leafgreen", 5, True),
+    ("generation-iii", "firered-leafgreen", 2, True),
     # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
@@ -68,7 +68,7 @@ def lz77(data, width, data2bits):
     dp = [(0, 0)] * n
     for i in reversed(range(n)):
         size, lst = dp[i + 1] if i + 1 < n else (0, None)
-        out = (0, 128, 1, data[i])
+        out = Lz77(0, 128, 1, data[i])
         ans = (size + nbits(out), (out, lst))
         for j in range(i):
             for k in range(j, n - i + j):
@@ -84,7 +84,7 @@ def lz77(data, width, data2bits):
                 size, lst = dp[index] if index < n else (0, None)
                 # TODO: don't output nxt if i + runlen == n
                 nxt = data[i + runlen] if i + runlen < n else 0
-                out = (dy, dx, runlen, nxt)
+                out = Lz77(dy, dx, runlen, nxt)
                 ans = min(ans, (size + nbits(out), (out, lst)))
         dp[i] = ans
 
@@ -94,7 +94,7 @@ def lz77(data, width, data2bits):
         first, rest = node
         ans.append(first)
         node = rest
-    return Lz77(*zip(*ans))
+    return ans
 
 
 def he(data):
@@ -163,13 +163,13 @@ def byte_encode(bits):
     print("}")
 
 
-def output_huffman(form, perm, bits):
+def output_huffman(form, perm):
     print("{")
     byte_encode(list(form))
     print(",{")
     for x in perm:
         print("0x%02X," % x, end="")
-    print("}, %s}" % bits)
+    print("}}")
 
 
 def read_image(sprites_dir, shiny_dir, id):
@@ -189,8 +189,7 @@ def read_image(sprites_dir, shiny_dir, id):
         return None
 
     image = []
-    bbox = sprite.getbbox()
-    xl, yl, xh, yh = bbox
+    xl, yl, xh, yh = sprite.getbbox()
     for y in range(yl, yh):
         for x in range(xl, xh):
             color = pixel(sprite, shiny, x, y)
@@ -210,14 +209,13 @@ def read_images(pool):
 
 
 def compress_image(d2bs, input):
-    uncompressed_image, color_sizes = input
-    (w, h), _, uncompressed = uncompressed_image
-    return ((w, h), color_sizes, lz77(uncompressed, w, d2bs))
+    (w, h), _, uncompressed = input
+    return ((w, h), lz77(uncompressed, w, d2bs))
 
 
-def compress_images(uncompressed_images, pool):
+def compress_images(uncompressed, pool):
     colormaps = []
-    for _, colormap, _ in uncompressed_images:
+    for _, colormap, _ in uncompressed:
         regular_colormap = []
         shiny_colormap = []
         for regular, shiny in list(colormap)[1:]:
@@ -225,66 +223,60 @@ def compress_images(uncompressed_images, pool):
             shiny_colormap.extend(shiny)
         colormaps.append((regular_colormap, shiny_colormap))
     colors = he([x for pairs in colormaps for colormap in pairs for x in colormap])
-    color_sizes = [
-        [sum(len(colors.data2bits[x]) for x in cmap) for cmap in pair]
-        for pair in colormaps
-    ]
-    uncompressed = list(zip(uncompressed_images, color_sizes))
 
     d2bs = [[1] * 256] * len(LZ77_FIELDS)
     for _ in range(3):
-        images = pool.map(partial(compress_image, d2bs), uncompressed)
+        sizes, streams = zip(*pool.map(partial(compress_image, d2bs), uncompressed))
 
-        all_streams = defaultdict(list)
-        for _, _, streams in images:
-            for i, stream in enumerate(streams):
-                all_streams[i].extend(list(stream))
-        lz = Lz77(*pool.map(he, all_streams.values()))
-        d2bs = []
-        size = 0
-        for huffman in lz:
-            size += len(huffman.bits)
-            d2bs.append([len(huffman.data2bits[d]) for d in range(256)])
-        print("%.3fKB" % ((size + 7) // 8 / 1000), file=stderr)
-    return images, colors, lz
+        all_streams = [[] for _ in range(len(LZ77_FIELDS))]
+        for stream in streams:
+            for t in stream:
+                for i, x in enumerate(t):
+                    all_streams[i].append(x)
+        lz = Lz77(*pool.map(he, all_streams))
+
+        d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
+        bitstreams = []
+        bitlens = []
+        for stream, colormap_pair in zip(streams, colormaps):
+            bitstream = []
+            for t in stream:
+                for huffman, x in zip(lz, t):
+                    bitstream.extend(huffman.data2bits[x])
+            for colormap in colormap_pair:
+                for value in colormap:
+                    bitstream.extend(colors.data2bits[value])
+            bitlens.append(len(bitstream))
+            bitstreams.extend(bitstream)
+        print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000), file=stderr)
+    return sizes, colors, bitstreams, bitlens, lz
 
 
-def output(images, colors, lz):
+def output(sizes, colors, bitstream, bitlens, lz):
     print('#include "types.h"')
     print("static const Sprite sprite_data[] = {")
-    for size, color_sizes, streams in images:
-        print("{%d,%d," % size)
-        for color_size in color_sizes:
-            print("%d," % color_size)
-        for stream, huffman in zip(streams, lz):
-            size = sum(len(huffman.data2bits[x]) for x in stream)
-            print("%d," % size)
-        print("},")
+    for (w, h), bitlen in zip(sizes, bitlens):
+        print("{%d,%d,%d}," % (w, h, bitlen))
     print("};")
-    for name, field in zip(LZ77_FIELDS, lz):
-        print("static const uint8_t %s_bits[] =" % name)
-        byte_encode(field.bits)
-        print(";")
-    print("static const uint8_t colormap_bits[] =")
-    byte_encode(colors.bits)
+    print("static const uint8_t bitstream[] =")
+    byte_encode(bitstream)
     print(";")
     print("const Sprites sprites = {")
     print("sprite_data,")
-    print("%d," % len(images))
+    print("%d," % len(sizes))
     print("{")
-    for name, field in zip(LZ77_FIELDS, lz):
-        output_huffman(field.form, field.perm, "%s_bits" % name)
+    for field in lz:
+        output_huffman(field.form, field.perm)
         print(",")
     print("},")
-    output_huffman(colors.form, colors.perm, "colormap_bits")
-    print("};")
+    output_huffman(colors.form, colors.perm)
+    print(",bitstream};")
 
 
 def main():
     pool = Pool()
     uncompressed_images = read_images(pool)
-    images, colors, lz = compress_images(uncompressed_images, pool)
-    output(images, colors, lz)
+    output(*compress_images(uncompressed_images, pool))
 
 
 if __name__ == "__main__":
