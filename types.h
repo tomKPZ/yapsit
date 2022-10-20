@@ -46,7 +46,7 @@ typedef struct {
   const Sprite *images;
   const size_t count;
   const Lz77Header lz77;
-  const HuffmanHeader colormaps;
+  const HuffmanHeader palettes;
   const uint8_t *bitstream;
 } Sprites;
 

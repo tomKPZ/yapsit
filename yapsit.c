@@ -78,29 +78,28 @@ static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset) {
   return sprite;
 }
 
-static void decompress_colormap(BitstreamContext *bitstream,
-                                HuffmanContext *color_context,
-                                uint8_t colormap_max, uint8_t colormap[16][3]) {
-  memset(colormap[0], 0, sizeof(colormap[0]));
-  size_t cmaps = rand() % 16 == 0 ? 2 : 1;
-  for (size_t i = 1; i < colormap_max + 1; i++) {
+static void decompress_palette(BitstreamContext *bitstream,
+                               HuffmanContext *color_context,
+                               uint8_t palette_max, uint8_t palette[16][3]) {
+  memset(palette[0], 0, sizeof(palette[0]));
+  for (size_t i = 1; i < palette_max + 1; i++) {
     for (size_t j = 0; j < 3; j++)
-      colormap[i][j] = huffman_decode(color_context, bitstream) * 8 * 255 / 248;
+      palette[i][j] = huffman_decode(color_context, bitstream) * 8 * 255 / 248;
   }
 }
 
-static void choose_colormap(BitstreamContext *bitstream, uint8_t colormap_max,
-                            uint8_t colormap[16][3]) {
+static void choose_palette(BitstreamContext *bitstream, uint8_t palette_max,
+                           uint8_t palette[16][3]) {
   HuffmanContext color_context;
-  huffman_init(&color_context, &sprites.colormaps);
-  size_t cmaps = rand() % 16 == 0 ? 2 : 1;
-  for (size_t cmap = 0; cmap < cmaps; cmap++)
-    decompress_colormap(bitstream, &color_context, colormap_max, colormap);
+  huffman_init(&color_context, &sprites.palettes);
+  size_t palettes = rand() % 16 == 0 ? 2 : 1;
+  for (size_t cmap = 0; cmap < palettes; cmap++)
+    decompress_palette(bitstream, &color_context, palette_max, palette);
 }
 
 static uint8_t *decompress_image(const Sprite *sprite,
                                  BitstreamContext *bitstream,
-                                 uint8_t *colormap_max) {
+                                 uint8_t *palette_max) {
   size_t size = sprite->w * sprite->h;
   uint8_t *buf = malloc(size);
   if (!buf)
@@ -110,15 +109,15 @@ static uint8_t *decompress_image(const Sprite *sprite,
   const HuffmanHeader *headers = &sprites.lz77.dys;
   for (size_t i = 0; i < 4; i++)
     huffman_init(&contexts[i], &headers[i]);
-  *colormap_max = 0;
+  *palette_max = 0;
   while (buf - image < size) {
     uint8_t dy = huffman_decode(&contexts[0], bitstream);
     uint8_t dx = huffman_decode(&contexts[1], bitstream);
     uint8_t runlen = huffman_decode(&contexts[2], bitstream);
     uint8_t value = huffman_decode(&contexts[3], bitstream);
 
-    if (value > *colormap_max)
-      *colormap_max = value;
+    if (value > *palette_max)
+      *palette_max = value;
 
     uint16_t delta = (sprite->w * dy) + dx - 128;
     if (delta == 0) {
@@ -136,15 +135,15 @@ static uint8_t *decompress_image(const Sprite *sprite,
 }
 
 static void draw(const Sprite *sprite, const uint8_t *image,
-                 const uint8_t colormap[16][3]) {
+                 const uint8_t palette[16][3]) {
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
       uint8_t hi = image[y * sprite->w + x];
       uint8_t li = 0;
       if (y + 1 < sprite->h)
         li = image[(y + 1) * sprite->w + x];
-      const uint8_t *h = colormap[hi];
-      const uint8_t *l = colormap[li];
+      const uint8_t *h = palette[hi];
+      const uint8_t *l = palette[li];
       if (hi && li)
         printf(BG FG "▄", h[0], h[1], h[2], l[0], l[1], l[2]);
       else if (hi)
@@ -194,16 +193,16 @@ int main(int argc, char *argv[]) {
     const Sprite *images = sprites.images;
     BitstreamContext bitstream = {sprites.bitstream, 0};
     HuffmanContext color_context;
-    huffman_init(&color_context, &sprites.colormaps);
+    huffman_init(&color_context, &sprites.palettes);
     for (size_t i = 0; i < sprites.count; i++) {
-      uint8_t colormap_max;
-      uint8_t *image = decompress_image(&images[i], &bitstream, &colormap_max);
+      uint8_t palette_max;
+      uint8_t *image = decompress_image(&images[i], &bitstream, &palette_max);
       if (!image)
         return 1;
-      uint8_t colormap[16][3];
+      uint8_t palette[16][3];
       for (int j = 0; j < 2; j++) {
-        decompress_colormap(&bitstream, &color_context, colormap_max, colormap);
-        draw(&images[i], image, colormap);
+        decompress_palette(&bitstream, &color_context, palette_max, palette);
+        draw(&images[i], image, palette);
       }
       free(image);
     }
@@ -220,15 +219,15 @@ int main(int argc, char *argv[]) {
       return 1;
     BitstreamContext bitstream = {sprites.bitstream, offset};
 
-    uint8_t colormap_max;
-    uint8_t *image = decompress_image(sprite, &bitstream, &colormap_max);
+    uint8_t palette_max;
+    uint8_t *image = decompress_image(sprite, &bitstream, &palette_max);
     if (!image)
       return 1;
 
-    uint8_t colormap[16][3];
-    choose_colormap(&bitstream, colormap_max, colormap);
+    uint8_t palette[16][3];
+    choose_palette(&bitstream, palette_max, palette);
 
-    draw(sprite, image, colormap);
+    draw(sprite, image, palette);
     free(image);
   }
 

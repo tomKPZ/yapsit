@@ -45,7 +45,7 @@ def pixel(sprite, shiny, x, y):
     return (r1 // 8, g1 // 8, b1 // 8), (r2 // 8, g2 // 8, b2 // 8)
 
 
-def create_colormap(sprite, shiny):
+def create_palette(sprite, shiny):
     counter = Counter()
     n, m = sprite.size
     for y in range(m):
@@ -54,10 +54,10 @@ def create_colormap(sprite, shiny):
     if len(counter) > 16:
         raise Exception("Excess colors in palette")
     del counter[(None, None)]
-    colormap = OrderedDict({(None, None): 0})
+    palette = OrderedDict({(None, None): 0})
     for _, color in sorted(zip(counter.values(), counter.keys())):
-        colormap[color] = len(colormap)
-    return colormap
+        palette[color] = len(palette)
+    return palette
 
 
 def lz77(data, width, data2bits):
@@ -183,7 +183,7 @@ def read_image(sprites_dir, shiny_dir, id):
         shiny = sprite
 
     try:
-        colormap = create_colormap(sprite, shiny)
+        palette = create_palette(sprite, shiny)
     except Exception as e:
         print(e, "in", pathname, file=stderr)
         return None
@@ -193,9 +193,9 @@ def read_image(sprites_dir, shiny_dir, id):
     for y in range(yl, yh):
         for x in range(xl, xh):
             color = pixel(sprite, shiny, x, y)
-            image.append(colormap[color])
+            image.append(palette[color])
     width = xh - xl
-    return ((width, yh - yl), colormap, image)
+    return ((width, yh - yl), palette, image)
 
 
 def read_images(pool):
@@ -214,15 +214,15 @@ def compress_image(d2bs, input):
 
 
 def compress_images(uncompressed, pool):
-    colormaps = []
-    for _, colormap, _ in uncompressed:
-        regular_colormap = []
-        shiny_colormap = []
-        for regular, shiny in list(colormap)[1:]:
-            regular_colormap.extend(regular)
-            shiny_colormap.extend(shiny)
-        colormaps.append((regular_colormap, shiny_colormap))
-    colors = he([x for pairs in colormaps for colormap in pairs for x in colormap])
+    palettes = []
+    for _, palette, _ in uncompressed:
+        regular_palette = []
+        shiny_palette = []
+        for regular, shiny in list(palette)[1:]:
+            regular_palette.extend(regular)
+            shiny_palette.extend(shiny)
+        palettes.append((regular_palette, shiny_palette))
+    colors = he([x for pairs in palettes for palette in pairs for x in palette])
 
     d2bs = [[1] * 256] * len(LZ77_FIELDS)
     for _ in range(3):
@@ -238,13 +238,13 @@ def compress_images(uncompressed, pool):
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
         bitstreams = []
         bitlens = []
-        for stream, colormap_pair in zip(streams, colormaps):
+        for stream, palette_pair in zip(streams, palettes):
             bitstream = []
             for t in stream:
                 for huffman, x in zip(lz, t):
                     bitstream.extend(huffman.data2bits[x])
-            for colormap in colormap_pair:
-                for value in colormap:
+            for palette in palette_pair:
+                for value in palette:
                     bitstream.extend(colors.data2bits[value])
             bitlens.append(len(bitstream))
             bitstreams.extend(bitstream)
