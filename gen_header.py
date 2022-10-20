@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from collections import Counter, OrderedDict, defaultdict, namedtuple
+from collections import Counter, OrderedDict, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
 from math import ceil, log2
@@ -30,7 +30,7 @@ SPRITES = [
 ]
 LZ77_FIELDS = ["dys", "dxs", "runlen", "values"]
 
-Huffman = namedtuple("Huffman", ["bits", "form", "perm", "data2bits"])
+Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 Lz77 = namedtuple("Lz77", LZ77_FIELDS)
 
 
@@ -99,13 +99,6 @@ def lz77(data, width, data2bits):
 
 def he(data):
     counter = Counter(data)
-    shannon = 0
-    total = sum(counter.values())
-    for count in counter.values():
-        p = count / total
-        shannon -= count * log2(p)
-    shannon = ceil(shannon)
-
     heap = [(counter[i], i, i) for i in range(256)]
     heapify(heap)
     while len(heap) > 1:
@@ -136,18 +129,24 @@ def he(data):
         acc.pop()
 
     dfs(tree)
-    bits = [y for x in data for y in data2bits[x]]
+
+    total = sum(counter.values())
+    shannon = total * log2(total)
+    bitlen = 0
+    for x, count in counter.items():
+        shannon -= count * log2(count)
+        bitlen += count * len(data2bits[x])
     print(
         "%d/%d (+%.1fB) (+%.2f%%)"
         % (
-            len(bits),
-            shannon,
-            (len(bits) - shannon) / 8,
-            100 * (len(bits) / shannon - 1),
+            bitlen,
+            ceil(shannon),
+            (bitlen - shannon) / 8,
+            100 * (bitlen / shannon - 1),
         ),
         file=stderr,
     )
-    return Huffman(bits, form, perm, data2bits)
+    return Huffman(form, perm, data2bits)
 
 
 def byte_encode(bits):
