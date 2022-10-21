@@ -13,6 +13,13 @@
 
 extern const Sprites sprites;
 
+static void *checked_malloc(size_t size) {
+  void *mem = malloc(size);
+  if (!mem)
+    exit(1);
+  return mem;
+}
+
 static bool read_bit(BitstreamContext *bitstream) {
   uint8_t byte = bitstream->bits[bitstream->offset / 8];
   bool bit = byte & (1 << (7 - bitstream->offset % 8));
@@ -99,9 +106,7 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h,
                                  BitstreamContext *bitstream,
                                  uint8_t *palette_max) {
   size_t size = w * h;
-  uint8_t *buf = malloc(size);
-  if (!buf)
-    return NULL;
+  uint8_t *buf = checked_malloc(size);
   uint8_t *image = buf;
   HuffmanContext contexts[4];
   const HuffmanHeader *headers = &sprites.lz77.dys;
@@ -188,8 +193,7 @@ static void reset() {
 static void draw(uint8_t w, uint8_t h, const uint8_t *image,
                  const uint8_t palette[16][3]) {
   size_t size = (h + 1) / 2 * (w * 44 + 1) + 1;
-  // TODO: check malloc.
-  char *buf = out = malloc(size);
+  char *buf = out = checked_malloc(size);
   for (size_t y = 0; y < h; y += 2) {
     for (size_t x = 0; x < w; x++) {
       uint8_t u = image[y * w + x];
@@ -271,8 +275,6 @@ int main(int argc, char *argv[]) {
       uint8_t w = images[i].w, h = images[i].h;
       uint8_t palette_max;
       uint8_t *image = decompress_image(w, h, &bitstream, &palette_max);
-      if (!image)
-        return 1;
       uint8_t palette[16][3];
       for (int j = 0; j < 2; j++) {
         decompress_palette(&bitstream, &color_context, palette_max, palette);
@@ -296,8 +298,6 @@ int main(int argc, char *argv[]) {
 
     uint8_t palette_max;
     uint8_t *image = decompress_image(w, h, &bitstream, &palette_max);
-    if (!image)
-      return 1;
 
     uint8_t palette[16][3];
     choose_palette(&bitstream, palette_max, palette);
