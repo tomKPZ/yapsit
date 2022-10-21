@@ -13,9 +13,6 @@
 
 extern const Sprites sprites;
 
-#define FG "\033[38;2;%d;%d;%dm"
-#define BG "\033[48;2;%d;%d;%dm"
-
 static bool read_bit(BitstreamContext *bitstream) {
   uint8_t byte = bitstream->bits[bitstream->offset / 8];
   bool bit = byte & (1 << (7 - bitstream->offset % 8));
@@ -73,7 +70,7 @@ static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset) {
       sprite = &images[i];
       *bit_offset = offset;
     }
-    offset += sprite->bitlen;
+    offset += images[i].bitlen;
   }
   return sprite;
 }
@@ -134,8 +131,32 @@ static uint8_t *decompress_image(const Sprite *sprite,
   return image;
 }
 
+static char *out;
+
+static void itoa(uint8_t i) {
+  *out++ = i / 100 + '0';
+  *out++ = (i / 10) % 10 + '0';
+  *out++ = i % 10 + '0';
+}
+
+static void output_color(const uint8_t color[3]) {
+  for (size_t i = 0; i < 3; i++) {
+    *out++ = ';';
+    itoa(color[i]);
+  }
+}
+
+static void output_str(const char *str) {
+  size_t len = strlen(str);
+  memcpy(out, str, len);
+  out += len;
+}
+
 static void draw(const Sprite *sprite, const uint8_t *image,
                  const uint8_t palette[16][3]) {
+  size_t size = (sprite->h + 1) / 2 * (sprite->w * 44 + 1) + 1;
+  // TODO: check malloc.
+  char *buf = out = malloc(size);
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
       uint8_t hi = image[y * sprite->w + x];
@@ -144,18 +165,30 @@ static void draw(const Sprite *sprite, const uint8_t *image,
         li = image[(y + 1) * sprite->w + x];
       const uint8_t *h = palette[hi];
       const uint8_t *l = palette[li];
-      if (hi && li)
-        printf(BG FG "▄", h[0], h[1], h[2], l[0], l[1], l[2]);
-      else if (hi)
-        printf(FG "▀", h[0], h[1], h[2]);
-      else if (li)
-        printf(FG "▄", l[0], l[1], l[2]);
-      else
-        printf(" ");
-      printf("\033[m");
+      if (hi && li) {
+        output_str("\033[48;2");
+        output_color(h);
+        output_str("m\033[38;2");
+        output_color(l);
+        output_str("m\u2584");
+      } else if (hi) {
+        output_str("\033[38;2");
+        output_color(h);
+        output_str("m\u2580");
+      } else if (li) {
+        output_str("\033[38;2");
+        output_color(l);
+        output_str("m\u2584");
+      } else {
+        *out++ = ' ';
+      }
+      output_str("\033[m");
     }
-    printf("\n");
+    *out++ = '\n';
   }
+  *out++ = 0;
+  printf("%s", buf);
+  free(buf);
 }
 
 static struct argp_option options[] = {

@@ -20,7 +20,7 @@ VERSIONS_DIR = path.join(
 )
 SPRITES = [
     # ("generation-iii", "emerald", 386, True),
-    ("generation-iii", "firered-leafgreen", 2, True),
+    ("generation-iii", "firered-leafgreen", 151, True),
     # ("generation-iii", "ruby-sapphire", 386, True),
     # ("generation-iv", "diamond-pearl", 493, True),
     # ("generation-iv", "heartgold-soulsilver", 493, True),
