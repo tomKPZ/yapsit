@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/auxv.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "types.h"
@@ -283,7 +284,7 @@ int main(int argc, char *argv[]) {
       free(image);
     }
   } else {
-    srand(*(unsigned int *)getauxval(AT_RANDOM));
+    srand(time(NULL) ^ getpid());
 
     struct winsize term_size;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
