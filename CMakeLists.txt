@@ -3,12 +3,13 @@ cmake_minimum_required(VERSION 3.1.0)
 project(Yapsit C)
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE MinSizeRel)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+set(CMAKE_C_FLAGS "-Wall -Wextra -Werror")
+set(CMAKE_C_FLAGS_DEBUG "-g")
+set(CMAKE_C_FLAGS_RELEASE "-O2")
+set(CMAKE_C_COMPILER "clang")
 
 add_custom_command(
   OUTPUT pokemon.c

@@ -40,7 +40,7 @@ static void huffman_init(HuffmanContext *context, const HuffmanHeader *header) {
   BitstreamContext bitstream = {header->form, 0};
   const uint8_t *perm = header->perm;
   HuffmanBranch dummy;
-  uint8_t i = decode_node(&bitstream, context->nodes, 0, &perm, &dummy);
+  decode_node(&bitstream, context->nodes, 0, &perm, &dummy);
 }
 
 static uint8_t huffman_decode(HuffmanContext *context,
@@ -79,7 +79,7 @@ static void decompress_palette(BitstreamContext *bitstream,
                                HuffmanContext *color_context,
                                uint8_t palette_max, uint8_t palette[16][3]) {
   memset(palette[0], 0, sizeof(palette[0]));
-  for (size_t i = 1; i < palette_max + 1; i++) {
+  for (size_t i = 1; i <= palette_max; i++) {
     for (size_t j = 0; j < 3; j++)
       palette[i][j] = huffman_decode(color_context, bitstream) * 8 * 255 / 248;
   }
@@ -107,7 +107,7 @@ static uint8_t *decompress_image(const Sprite *sprite,
   for (size_t i = 0; i < 4; i++)
     huffman_init(&contexts[i], &headers[i]);
   *palette_max = 0;
-  while (buf - image < size) {
+  while (buf < image + size) {
     uint8_t dy = huffman_decode(&contexts[0], bitstream);
     uint8_t dx = huffman_decode(&contexts[1], bitstream);
     uint8_t runlen = huffman_decode(&contexts[2], bitstream);
@@ -125,7 +125,7 @@ static uint8_t *decompress_image(const Sprite *sprite,
     for (size_t i = 0; i < runlen; i++)
       buf[i] = buf[i - delta];
     buf += runlen;
-    if (buf - image < size)
+    if (buf < image + size)
       *(buf++) = value;
   }
   return image;
@@ -134,9 +134,12 @@ static uint8_t *decompress_image(const Sprite *sprite,
 static char *out;
 
 static void itoa(uint8_t i) {
-  *out++ = i / 100 + '0';
-  *out++ = (i / 10) % 10 + '0';
-  *out++ = i % 10 + '0';
+  out[2] = i % 10 + '0';
+  i /= 10;
+  out[1] = i % 10 + '0';
+  i /= 10;
+  out[0] = i + '0';
+  out += 3;
 }
 
 static void output_color(const uint8_t color[3]) {
@@ -192,7 +195,7 @@ static void draw(const Sprite *sprite, const uint8_t *image,
 }
 
 static struct argp_option options[] = {
-    {"test", 't', 0, 0, "Output all sprites."},
+    {"test", 't', 0, 0, "Output all sprites.", 0},
     {0},
 };
 
@@ -201,10 +204,12 @@ struct arguments {
 };
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
+  (void)arg;
   struct arguments *arguments = state->input;
   switch (key) {
   case 't':
     arguments->test = true;
+    break;
   case ARGP_KEY_ARG:
     return 0;
   default:
