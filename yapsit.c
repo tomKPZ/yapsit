@@ -132,6 +132,8 @@ static uint8_t *decompress_image(const Sprite *sprite,
 }
 
 static char *out;
+static uint8_t pfg = 0;
+static uint8_t pbg = 0;
 
 static void itoa(uint8_t i) {
   out[2] = i % 10 + '0';
@@ -155,6 +157,33 @@ static void output_str(const char *str) {
   out += len;
 }
 
+static void fg(uint8_t i, const uint8_t palette[16][3]) {
+  if (pfg == i)
+    return;
+  pfg = i;
+
+  output_str("\033[38;2");
+  output_color(palette[i]);
+  *out++ = 'm';
+}
+
+static void bg(uint8_t i, const uint8_t palette[16][3]) {
+  if (pbg == i)
+    return;
+  pbg = i;
+
+  output_str("\033[48;2");
+  output_color(palette[i]);
+  *out++ = 'm';
+}
+
+static void reset() {
+  if (pfg || pbg)
+    output_str("\033[m");
+  pfg = 0;
+  pbg = 0;
+}
+
 static void draw(const Sprite *sprite, const uint8_t *image,
                  const uint8_t palette[16][3]) {
   size_t size = (sprite->h + 1) / 2 * (sprite->w * 44 + 1) + 1;
@@ -162,31 +191,42 @@ static void draw(const Sprite *sprite, const uint8_t *image,
   char *buf = out = malloc(size);
   for (size_t y = 0; y < sprite->h; y += 2) {
     for (size_t x = 0; x < sprite->w; x++) {
-      uint8_t hi = image[y * sprite->w + x];
-      uint8_t li = 0;
+      uint8_t h = image[y * sprite->w + x];
+      uint8_t l = 0;
       if (y + 1 < sprite->h)
-        li = image[(y + 1) * sprite->w + x];
-      const uint8_t *h = palette[hi];
-      const uint8_t *l = palette[li];
-      if (hi && li) {
-        output_str("\033[48;2");
-        output_color(h);
-        output_str("m\033[38;2");
-        output_color(l);
-        output_str("m\u2584");
-      } else if (hi) {
-        output_str("\033[38;2");
-        output_color(h);
-        output_str("m\u2580");
-      } else if (li) {
-        output_str("\033[38;2");
-        output_color(l);
-        output_str("m\u2584");
+        l = image[(y + 1) * sprite->w + x];
+      if (h && l) {
+        if ((pbg == h) + (pfg == l) > (pfg == h) + (pbg == l)) {
+          fg(l, palette);
+          bg(h, palette);
+          output_str("\u2584");
+        } else {
+          fg(h, palette);
+          bg(l, palette);
+          output_str("\u2580");
+        }
+      } else if (h) {
+        if (pbg) {
+          output_str("\033[m");
+          pfg = 0;
+          pbg = 0;
+        }
+        fg(h, palette);
+        output_str("\u2580");
+      } else if (l) {
+        if (pbg) {
+          output_str("\033[m");
+          pfg = 0;
+          pbg = 0;
+        }
+        fg(l, palette);
+        output_str("\u2584");
       } else {
+        reset();
         *out++ = ' ';
       }
-      output_str("\033[m");
     }
+    reset();
     *out++ = '\n';
   }
   *out++ = 0;
