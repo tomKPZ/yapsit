@@ -60,13 +60,13 @@ def create_palette(sprite, shiny):
 
 def lz77(data, width, data2bits):
     def nbits(output):
-        return sum(d2b[out] for out, d2b in zip(output, data2bits))
+        return sum((d2b[out] if out >= 0 else 0) for out, d2b in zip(output, data2bits))
 
     n = len(data)
     dp = [(0, 0)] * n
     for i in reversed(range(n)):
         size, lst = dp[i + 1] if i + 1 < n else (0, None)
-        out = (0, 128, 1, data[i])
+        out = (-1 if i < width else 0, -1 if i == 0 else 128, -1, data[i])
         ans = (size + nbits(out), (out, lst))
         for j in range(i):
             for k in range(j, n - i + j):
@@ -80,9 +80,12 @@ def lz77(data, width, data2bits):
                     continue
                 index = i + runlen + 1
                 size, lst = dp[index] if index < n else (0, None)
-                # TODO: don't output nxt if i + runlen == n
-                nxt = data[i + runlen] if i + runlen < n else 0
-                out = (dy, dx, runlen, nxt)
+                out = (
+                    dy if y2 else -1,
+                    dx if y2 or x2 else -1,
+                    runlen if dy or dx else -1,
+                    data[i + runlen] if i + runlen < n else -1,
+                )
                 ans = min(ans, (size + nbits(out), (out, lst)))
         dp[i] = ans
 
@@ -230,7 +233,8 @@ def compress_images(uncompressed, pool):
         for stream in streams:
             for t in stream:
                 for i, x in enumerate(t):
-                    all_streams[i].append(x)
+                    if x >= 0:
+                        all_streams[i].append(x)
         lz = tuple(pool.map(he, all_streams))
 
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
@@ -240,7 +244,8 @@ def compress_images(uncompressed, pool):
             bitstream = []
             for t in stream:
                 for huffman, x in zip(lz, t):
-                    bitstream.extend(huffman.data2bits[x])
+                    if x >= 0:
+                        bitstream.extend(huffman.data2bits[x])
             for palette in palette_pair:
                 for value in palette:
                     bitstream.extend(colors.data2bits[value])

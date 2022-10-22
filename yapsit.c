@@ -103,7 +103,6 @@ static void choose_palette(BitstreamContext *bitstream, uint8_t palette_max,
 }
 
 static uint8_t *decompress_image(uint8_t w, uint8_t h,
-
                                  BitstreamContext *bitstream,
                                  uint8_t *palette_max) {
   size_t size = w * h;
@@ -115,25 +114,28 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h,
     huffman_init(&contexts[i], &headers[i]);
   *palette_max = 0;
   while (buf < image + size) {
-    uint8_t dy = huffman_decode(&contexts[0], bitstream);
-    uint8_t dx = huffman_decode(&contexts[1], bitstream);
-    uint8_t runlen = huffman_decode(&contexts[2], bitstream);
-    uint8_t value = huffman_decode(&contexts[3], bitstream);
+    size_t offset = buf - image;
+    uint8_t y = offset / w;
+    uint8_t x = offset % w;
 
-    if (value > *palette_max)
-      *palette_max = value;
+    uint8_t dy = y ? huffman_decode(&contexts[0], bitstream) : 0;
+    uint8_t dx = x || y ? huffman_decode(&contexts[1], bitstream) : 128;
+    int8_t dxi = dx - 128;
+    uint16_t delta = (w * dy) + dxi;
+    uint8_t runlen = delta ? huffman_decode(&contexts[2], bitstream) : 0;
 
-    uint16_t delta = (w * dy) + dx - 128;
-    if (delta == 0) {
-      *(buf++) = value;
-      continue;
-    }
     // Manual copy instead of memcpy/memmove to handle overlapping ranges.
     for (size_t i = 0; i < runlen; i++)
       buf[i] = buf[i - delta];
     buf += runlen;
-    if (buf < image + size)
+
+    if (buf < image + size) {
+      uint8_t value = huffman_decode(&contexts[3], bitstream);
+      if (value > *palette_max)
+        *palette_max = value;
+
       *(buf++) = value;
+    }
   }
   return image;
 }
