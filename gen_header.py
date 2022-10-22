@@ -28,10 +28,8 @@ SPRITES = [
     # ("generation-v", "black-white", 650, True),
     # ("generation-vii", "icons", 807, False),
 ]
-LZ77_FIELDS = ["dys", "dxs", "runlen", "values"]
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
-Lz77 = namedtuple("Lz77", LZ77_FIELDS)
 
 
 def pixel(sprite, shiny, x, y):
@@ -68,7 +66,7 @@ def lz77(data, width, data2bits):
     dp = [(0, 0)] * n
     for i in reversed(range(n)):
         size, lst = dp[i + 1] if i + 1 < n else (0, None)
-        out = Lz77(0, 128, 1, data[i])
+        out = (0, 128, 1, data[i])
         ans = (size + nbits(out), (out, lst))
         for j in range(i):
             for k in range(j, n - i + j):
@@ -84,7 +82,7 @@ def lz77(data, width, data2bits):
                 size, lst = dp[index] if index < n else (0, None)
                 # TODO: don't output nxt if i + runlen == n
                 nxt = data[i + runlen] if i + runlen < n else 0
-                out = Lz77(dy, dx, runlen, nxt)
+                out = (dy, dx, runlen, nxt)
                 ans = min(ans, (size + nbits(out), (out, lst)))
         dp[i] = ans
 
@@ -223,16 +221,17 @@ def compress_images(uncompressed, pool):
         palettes.append((regular_palette, shiny_palette))
     colors = he([x for pairs in palettes for palette in pairs for x in palette])
 
-    d2bs = [[1] * 256] * len(LZ77_FIELDS)
+    LZ77_LEN = 4
+    d2bs = [[1] * 256] * LZ77_LEN
     for _ in range(3):
         sizes, streams = zip(*pool.map(partial(compress_image, d2bs), uncompressed))
 
-        all_streams = [[] for _ in range(len(LZ77_FIELDS))]
+        all_streams = [[] for _ in range(LZ77_LEN)]
         for stream in streams:
             for t in stream:
                 for i, x in enumerate(t):
                     all_streams[i].append(x)
-        lz = Lz77(*pool.map(he, all_streams))
+        lz = tuple(pool.map(he, all_streams))
 
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
         bitstreams = []
