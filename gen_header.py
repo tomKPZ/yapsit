@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from collections import Counter, OrderedDict, namedtuple
+from collections import Counter, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
 from math import ceil, log2
@@ -52,7 +52,7 @@ def create_palette(sprite, shiny):
     if len(counter) > 16:
         raise Exception("Excess colors in palette")
     del counter[(None, None)]
-    palette = OrderedDict({(None, None): 0})
+    palette = {(None, None): 0}
     for _, color in sorted(zip(counter.values(), counter.keys())):
         palette[color] = len(palette)
     return palette
@@ -93,21 +93,21 @@ def lz77(data, width, data2bits):
     node = 0
     ans = []
     while node >= 0:
-        _, first, rest = dp[node]
+        _, first, node = dp[node]
         ans.append(first)
-        node = rest
     return ans
 
 
-def he(data):
+def huffman_encode(data):
     counter = Counter(data)
-    heap = [(counter[i], i, i) for i in range(256)]
+    heap = [(counter[i], i) for i in range(256)]
     heapify(heap)
+    nodes: list[tuple[int, int, int]] = [(i, -1, -1) for i in range(256)]
     while len(heap) > 1:
-        c1, _, v1 = heappop(heap)
-        c2, _, v2 = heappop(heap)
-        heappush(heap, (c1 + c2, -len(heap), (v1, v2)))
-    tree = heap[0][2]
+        c1, v1 = heappop(heap)
+        c2, v2 = heappop(heap)
+        heappush(heap, (c1 + c2, len(nodes)))
+        nodes.append((-1, v1, v2))
 
     data2bits = {}
     acc = []
@@ -115,22 +115,23 @@ def he(data):
     perm = []
 
     # TODO: only output non-zero counted values
-    def dfs(node):
-        if type(node) == int:
+    def dfs(node: tuple[int, int, int]):
+        val = node[0]
+        if val >= 0:
             form.append(1)
-            data2bits[node] = acc[::]
-            perm.append(node)
+            data2bits[val] = acc[::]
+            perm.append(val)
             return
         form.append(0)
-        l, r = node
+        _, l, r = node
         acc.append(0)
-        dfs(l)
+        dfs(nodes[l])
         acc.pop()
         acc.append(1)
-        dfs(r)
+        dfs(nodes[r])
         acc.pop()
 
-    dfs(tree)
+    dfs(nodes[-1])
 
     total = sum(counter.values())
     shannon = total * log2(total)
@@ -149,28 +150,6 @@ def he(data):
         file=stderr,
     )
     return Huffman(form, perm, data2bits)
-
-
-def byte_encode(bits):
-    while len(bits) % 8 != 0:
-        bits.append(0)
-    print("{")
-    for i in range(0, len(bits), 8):
-        encoded = 0
-        for bit in bits[i : i + 8]:
-            encoded *= 2
-            encoded += bit
-        print("0x%02X," % encoded, end="")
-    print("}")
-
-
-def output_huffman(form, perm):
-    print("{")
-    byte_encode(list(form))
-    print(",{")
-    for x in perm:
-        print("0x%02X," % x, end="")
-    print("}}")
 
 
 def read_image(sprites_dir, shiny_dir, id):
@@ -223,7 +202,9 @@ def compress_images(uncompressed, pool):
             regular_palette.extend(regular)
             shiny_palette.extend(shiny)
         palettes.append((regular_palette, shiny_palette))
-    colors = he([x for pairs in palettes for palette in pairs for x in palette])
+    colors = huffman_encode(
+        [x for pairs in palettes for palette in pairs for x in palette]
+    )
 
     LZ77_LEN = 4
     d2bs = [[1] * 256] * LZ77_LEN
@@ -237,7 +218,7 @@ def compress_images(uncompressed, pool):
                 for i, x in enumerate(t):
                     if x >= 0:
                         all_streams[i].append(x)
-        lz = tuple(pool.map(he, all_streams))
+        lz = tuple(pool.map(huffman_encode, all_streams))
 
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
         bitstreams = []
@@ -257,6 +238,28 @@ def compress_images(uncompressed, pool):
     return sizes, colors, bitstreams, bitlens, lz
 
 
+def output_bits(bits):
+    while len(bits) % 8 != 0:
+        bits.append(0)
+    print("{")
+    for i in range(0, len(bits), 8):
+        encoded = 0
+        for bit in bits[i : i + 8]:
+            encoded *= 2
+            encoded += bit
+        print("0x%02X," % encoded, end="")
+    print("}")
+
+
+def output_huffman(form, perm):
+    print("{")
+    output_bits(list(form))
+    print(",{")
+    for x in perm:
+        print("0x%02X," % x, end="")
+    print("}}")
+
+
 def output(sizes, colors, bitstream, bitlens, lz):
     print('#include "types.h"')
     print("static const Sprite sprite_data[] = {")
@@ -264,7 +267,7 @@ def output(sizes, colors, bitstream, bitlens, lz):
         print("{%d,%d,%d}," % (w, h, bitlen))
     print("};")
     print("static const uint8_t bitstream[] =")
-    byte_encode(bitstream)
+    output_bits(bitstream)
     print(";")
     print("const Sprites sprites = {")
     print("sprite_data,")
