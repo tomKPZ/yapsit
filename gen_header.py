@@ -59,15 +59,16 @@ def create_palette(sprite, shiny):
 
 
 def lz77(data, width, data2bits):
+    # TODO: multiple representations of (dy, dx) for the same delta.
     def nbits(output):
         return sum((d2b[out] if out >= 0 else 0) for out, d2b in zip(output, data2bits))
 
     n = len(data)
-    dp = [(0, 0)] * n
+    dp: list[tuple[int, tuple[int, int, int, int], int]] = [(0, (-1,) * 4, -1)] * n
     for i in reversed(range(n)):
-        size, lst = dp[i + 1] if i + 1 < n else (0, None)
+        size, tail = (dp[i + 1][0], i + 1) if i + 1 < n else (0, -1)
         out = (-1 if i < width else 0, -1 if i == 0 else 128, -1, data[i])
-        ans = (size + nbits(out), (out, lst))
+        ans = (size + nbits(out), out, tail)
         for j in range(i):
             for k in range(j, n - i + j):
                 if data[k] != data[k + i - j]:
@@ -79,20 +80,20 @@ def lz77(data, width, data2bits):
                 if not (0 <= dx < 256 and 0 <= dy < 256):
                     continue
                 index = i + runlen + 1
-                size, lst = dp[index] if index < n else (0, None)
+                size, tail = (dp[index][0], index) if index < n else (0, -1)
                 out = (
                     dy if y2 else -1,
                     dx if y2 or x2 else -1,
                     runlen if dy or dx else -1,
                     data[i + runlen] if i + runlen < n else -1,
                 )
-                ans = min(ans, (size + nbits(out), (out, lst)))
+                ans = min(ans, (size + nbits(out), out, tail))
         dp[i] = ans
 
-    node = dp[0][1]
+    node = 0
     ans = []
-    while node is not None:
-        first, rest = node
+    while node >= 0:
+        _, first, rest = dp[node]
         ans.append(first)
         node = rest
     return ans
@@ -228,6 +229,7 @@ def compress_images(uncompressed, pool):
     d2bs = [[1] * 256] * LZ77_LEN
     for _ in range(3):
         sizes, streams = zip(*pool.map(partial(compress_image, d2bs), uncompressed))
+        # TODO: repaletteize based on value stream.
 
         all_streams = [[] for _ in range(LZ77_LEN)]
         for stream in streams:
