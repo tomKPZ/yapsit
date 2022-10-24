@@ -3,6 +3,7 @@
 from collections import Counter, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
+from json import load
 from math import ceil, log2
 from multiprocessing import Pool
 from os import path
@@ -11,48 +12,21 @@ from sys import stderr
 import PIL.Image
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
-VERSIONS_DIR = path.join(
-    SCRIPT_DIR,
-    "sprites",
-    "sprites",
-    "pokemon",
-    "versions",
-)
-SPRITES = [
-    # ("generation-iii", "emerald", 386, True),
-    ("generation-iii", "firered-leafgreen", 151, True),
-    # ("generation-iii", "ruby-sapphire", 386, True),
-    # ("generation-iv", "diamond-pearl", 493, True),
-    # ("generation-iv", "heartgold-soulsilver", 493, True),
-    # ("generation-iv", "platinum", 493, True),
-    # ("generation-v", "black-white", 650, True),
-    # ("generation-vii", "icons", 807, False),
-]
+ASSETS_DIR = "/home/tom/dev/local/pokemon-sprites"
+MONTAGES = set(["firered", "platinum", "black"])
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 
 
-def pixel(sprite, shiny, x, y):
-    r1, g1, b1, a1 = sprite.getpixel((x, y))
-    r2, g2, b2, a2 = shiny.getpixel((x, y))
-    if not a1 and not a2:
-        return None, None
-    # Some gen 3 sprites have inaccurate alpha channels.
-    if not a1 or not a2:
-        raise Exception("Bad alpha channel")
-    return (r1 // 8, g1 // 8, b1 // 8), (r2 // 8, g2 // 8, b2 // 8)
-
-
 def create_palette(sprite, shiny):
     counter = Counter()
-    n, m = sprite.size
-    for y in range(m):
-        for x in range(n):
-            counter[pixel(sprite, shiny, x, y)] -= 1
+    for pair in zip(sprite, shiny):
+        counter[pair] -= 1
     if len(counter) > 16:
         raise Exception("Excess colors in palette")
-    del counter[(None, None)]
-    palette = {(None, None): 0}
+    transparent = ((-1, -1, -1), (-1, -1, -1))
+    del counter[transparent]
+    palette = {transparent: 0}
     for _, color in sorted(zip(counter.values(), counter.keys())):
         palette[color] = len(palette)
     return palette
@@ -74,6 +48,8 @@ def lz77(data, width, data2bits):
                 if data[k] != data[k + i - j]:
                     break
                 runlen = k - j + 1
+                if runlen >= 256:
+                    break
                 y1, x1 = divmod(j, width)
                 y2, x2 = divmod(i, width)
                 dy, dx = y2 - y1, x2 - x1 + 128
@@ -152,39 +128,41 @@ def huffman_encode(data):
     return Huffman(form, perm, data2bits)
 
 
-def read_image(sprites_dir, shiny_dir, id):
-    basename = "%d.png" % (id + 1)
-    pathname = path.join(sprites_dir, basename)
-    sprite = PIL.Image.open(pathname).convert("RGBA")
-    if shiny_dir:
-        shiny_path = path.join(shiny_dir, basename)
-        shiny = PIL.Image.open(shiny_path).convert("RGBA")
-    else:
-        shiny = sprite
-
-    try:
-        palette = create_palette(sprite, shiny)
-    except Exception as e:
-        print(e, "in", pathname, file=stderr)
-        return None
-
-    image = []
-    xl, yl, xh, yh = sprite.getbbox()
-    for y in range(yl, yh):
-        for x in range(xl, xh):
-            color = pixel(sprite, shiny, x, y)
-            image.append(palette[color])
-    width = xh - xl
-    return ((width, yh - yl), palette, image)
+def pixel(montage, x, y):
+    r, g, b, a = montage.getpixel((x, y))
+    return (r // 8, g // 8, b // 8) if a else (-1, -1, -1)
 
 
-def read_images(pool):
+def read_images():
     images = []
-    for gen, game, max_id, has_shiny in SPRITES:
-        sprites_dir = path.join(VERSIONS_DIR, gen, game)
-        shiny_dir = path.join(sprites_dir, "shiny") if has_shiny else None
-        read = partial(read_image, sprites_dir, shiny_dir)
-        images.extend(x for x in pool.map(read, range(max_id)) if x)
+    metadata = load(open(path.join(ASSETS_DIR, "metadata.json")))
+    for name, (w, h), variants_id, group, variant_counts in metadata:
+        if name not in MONTAGES:
+            continue
+        montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert("RGBA")
+        row = 0
+        for variant_count in variant_counts:
+            xl = yl = 256
+            xh = yh = -1
+            for y in range(h):
+                for x in range(w):
+                    if montage.getpixel((x, y + h * row))[3]:
+                        xl = min(xl, x)
+                        yl = min(yl, y)
+                        xh = max(xh, x)
+                        yh = max(yh, y)
+            data = []
+            shiny = []
+            for y in range(yl, yh + 1):
+                for x in range(xl, xh + 1):
+                    data.append(pixel(montage, x, y + h * row))
+                    shiny.append(pixel(montage, x + w, y + h * row))
+
+            palette = create_palette(data, shiny)
+            image = [palette[colors] for colors in zip(data, shiny)]
+            images.append(((xh - xl + 1, yh - yl + 1), palette, image))
+
+            row += variant_count
     return images
 
 
@@ -283,7 +261,7 @@ def output(sizes, colors, bitstream, bitlens, lz):
 
 def main():
     pool = Pool()
-    uncompressed_images = read_images(pool)
+    uncompressed_images = read_images()
     output(*compress_images(uncompressed_images, pool))
 
 
