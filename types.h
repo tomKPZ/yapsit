@@ -39,6 +39,7 @@ typedef struct {
 typedef struct {
   uint8_t w;
   uint8_t h;
+  uint8_t d;
   uint16_t bitlen;
 } Sprite;
 

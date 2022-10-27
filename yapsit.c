@@ -102,10 +102,10 @@ static void choose_palette(BitstreamContext *bitstream, uint8_t palette_max,
     decompress_palette(bitstream, &color_context, palette_max, palette);
 }
 
-static uint8_t *decompress_image(uint8_t w, uint8_t h,
+static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
                                  BitstreamContext *bitstream,
                                  uint8_t *palette_max) {
-  size_t size = w * h;
+  size_t size = w * h * d;
   uint8_t *buf = checked_malloc(size);
   uint8_t *image = buf;
   HuffmanContext contexts[4];
@@ -275,9 +275,9 @@ int main(int argc, char *argv[]) {
     HuffmanContext color_context;
     huffman_init(&color_context, &sprites.palettes);
     for (size_t i = 0; i < sprites.count; i++) {
-      uint8_t w = images[i].w, h = images[i].h;
+      uint8_t w = images[i].w, h = images[i].h, d = images[i].d;
       uint8_t palette_max;
-      uint8_t *image = decompress_image(w, h, &bitstream, &palette_max);
+      uint8_t *image = decompress_image(w, h, d, &bitstream, &palette_max);
       uint8_t palette[16][3];
       for (int j = 0; j < 2; j++) {
         decompress_palette(&bitstream, &color_context, palette_max, palette);
@@ -296,11 +296,11 @@ int main(int argc, char *argv[]) {
         choose_sprite(term_size.ws_col, term_size.ws_row, &offset);
     if (sprite == NULL)
       return 1;
-    uint8_t w = sprite->w, h = sprite->h;
+    uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
     BitstreamContext bitstream = {sprites.bitstream, offset};
 
     uint8_t palette_max;
-    uint8_t *image = decompress_image(w, h, &bitstream, &palette_max);
+    uint8_t *image = decompress_image(w, h, d, &bitstream, &palette_max);
 
     uint8_t palette[16][3];
     choose_palette(&bitstream, palette_max, palette);

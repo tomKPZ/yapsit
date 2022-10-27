@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from collections import Counter, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
 from json import load
@@ -13,7 +13,7 @@ import PIL.Image
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = "/home/tom/dev/local/pokemon-sprites"
-MONTAGES = set(["firered", "platinum", "black"])
+MONTAGES = set(["firered", "ruby", "emerald"])
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 
@@ -32,7 +32,8 @@ def create_palette(sprite, shiny):
     return palette
 
 
-def lz77(data, width, data2bits):
+def lz77(data, size, data2bits):
+    width, _, _ = size
     # TODO: multiple representations of (dy, dx) for the same delta.
     def nbits(output):
         return sum((d2b[out] if out >= 0 else 0) for out, d2b in zip(output, data2bits))
@@ -134,49 +135,99 @@ def pixel(montage, x, y):
 
 
 def read_images():
-    images = []
+    cmm = {(i, j): 0 for i in range(16) for j in range(16)}
     metadata = load(open(path.join(ASSETS_DIR, "metadata.json")))
-    for name, (w, h), variants_id, group, variant_counts in metadata:
-        if name not in MONTAGES:
-            continue
-        montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert("RGBA")
-        row = 0
-        for variant_count in variant_counts:
-            xl = yl = 256
-            xh = yh = -1
-            for y in range(h):
-                for x in range(w):
-                    if montage.getpixel((x, y + h * row))[3]:
-                        xl = min(xl, x)
-                        yl = min(yl, y)
-                        xh = max(xh, x)
-                        yh = max(yh, y)
-            data = []
-            shiny = []
-            for y in range(yl, yh + 1):
-                for x in range(xl, xh + 1):
-                    data.append(pixel(montage, x, y + h * row))
-                    shiny.append(pixel(montage, x + w, y + h * row))
+    images = []
+    for (w, h), group in metadata:
+        spritess = defaultdict(list)
+        for name, variants_id, variant_counts in group:
+            if name not in MONTAGES:
+                continue
+            montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert(
+                "RGBA"
+            )
+            row = 0
+            for i, variant_count in enumerate(variant_counts):
+                # TODO: remove
+                if i >= 1:
+                    continue
+                for _ in range(variant_count):
+                    data = []
+                    shiny = []
+                    for y in range(h):
+                        for x in range(w):
+                            data.append(pixel(montage, x, y + h * row))
+                            shiny.append(pixel(montage, x + w, y + h * row))
 
-            palette = create_palette(data, shiny)
-            image = [palette[colors] for colors in zip(data, shiny)]
-            images.append(((xh - xl + 1, yh - yl + 1), palette, image))
+                    palette = create_palette(data, shiny)
+                    sprite = [palette[colors] for colors in zip(data, shiny)]
+                    spritess[i].append((sprite, palette))
 
-            row += variant_count
+                    row += 1
+        for sprites in spritess.values():
+            xl = yl = 255
+            xh = yh = 0
+            for sprite, _ in sprites:
+                for y in range(h):
+                    for x in range(w):
+                        if sprite[y * w + x]:
+                            xl = min(xl, x)
+                            yl = min(yl, y)
+                            xh = max(xh, x)
+                            yh = max(yh, y)
+            for sprite, _ in sprites:
+                sprite[:] = [
+                    sprite[y * w + x]
+                    for y in range(yl, yh + 1)
+                    for x in range(xl, xh + 1)
+                ]
+            n = len(sprites)
+            edges = []
+            for i in range(n):
+                for j in range(i + 1, n):
+                    for (c1, c2), count in (
+                        cmm | Counter(zip(sprites[i][0], sprites[j][0]))
+                    ).items():
+                        edges.append((-count, i, j, c1, c2))
+            edges.sort()
+            covered_from = set()
+            covered_to = set()
+            msf = []
+            for _, i, j, c1, c2 in edges:
+                if (i, j, c1) in covered_from or (i, j, c2) in covered_to:
+                    continue
+                covered_from.add((i, j, c1))
+                covered_to.add((i, j, c2))
+                msf.append((i, j, c1, c2))
+            perms = [list(range(16))] + [[16] * 16 for _ in range(n - 1)]
+            for i, j, c1, c2 in sorted(msf):
+                perms[j][c2] = perms[i][c1]
+            image_stream = []
+            palettes = []
+            for perm, (sprite, palette) in zip(perms, sprites):
+                inv = dict(zip(perm, range(16)))
+                image = [inv[c] for c in sprite]
+                image_stream.extend(image)
+                p = list(palette.keys())
+                for key, c in palette.items():
+                    p[c] = key
+                palettes.extend(p[1 : max(image) + 1])
+            size = (xh - xl + 1, yh - yl + 1, n)
+            images.append((size, image_stream, palettes))
     return images
 
 
 def compress_image(d2bs, input):
-    (w, h), _, uncompressed = input
-    return ((w, h), lz77(uncompressed, w, d2bs))
+    size, uncompressed, _ = input
+    return (size, lz77(uncompressed, size, d2bs))
 
 
 def compress_images(uncompressed, pool):
     palettes = []
-    for _, palette, _ in uncompressed:
+    for _, _, palette in uncompressed:
         regular_palette = []
         shiny_palette = []
-        for regular, shiny in list(palette)[1:]:
+        for regular, shiny in palette:
             regular_palette.extend(regular)
             shiny_palette.extend(shiny)
         palettes.append((regular_palette, shiny_palette))
@@ -241,8 +292,8 @@ def output_huffman(form, perm):
 def output(sizes, colors, bitstream, bitlens, lz):
     print('#include "types.h"')
     print("static const Sprite sprite_data[] = {")
-    for (w, h), bitlen in zip(sizes, bitlens):
-        print("{%d,%d,%d}," % (w, h, bitlen))
+    for (w, h, d), bitlen in zip(sizes, bitlens):
+        print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
     print("};")
     print("static const uint8_t bitstream[] =")
     output_bits(bitstream)
