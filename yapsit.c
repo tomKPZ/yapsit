@@ -85,11 +85,15 @@ static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset) {
 
 static void decompress_palette(BitstreamContext *bitstream,
                                HuffmanContext *color_context,
-                               uint8_t palette_max, uint8_t palette[16][3]) {
-  memset(palette[0], 0, sizeof(palette[0]));
+                               uint8_t palette_max,
+                               uint8_t palettes[2][16][3]) {
   for (size_t i = 1; i <= palette_max; i++) {
-    for (size_t j = 0; j < 3; j++)
-      palette[i][j] = huffman_decode(color_context, bitstream) * 8 * 255 / 248;
+    for (size_t k = 0; k < 2; k++) {
+      for (size_t j = 0; j < 3; j++) {
+        palettes[k][i][j] =
+            huffman_decode(color_context, bitstream) * 8 * 255 / 248;
+      }
+    }
   }
 }
 
@@ -97,14 +101,13 @@ static void choose_palette(BitstreamContext *bitstream, uint8_t palette_max,
                            uint8_t palette[16][3]) {
   HuffmanContext color_context;
   huffman_init(&color_context, &sprites.palettes);
-  size_t palettes = rand() % 16 == 0 ? 2 : 1;
-  for (size_t cmap = 0; cmap < palettes; cmap++)
-    decompress_palette(bitstream, &color_context, palette_max, palette);
+  uint8_t palettes[2][16][3];
+  decompress_palette(bitstream, &color_context, palette_max, palettes);
+  memcpy(palette, palettes[rand() % 16 == 0], sizeof(palettes[0]));
 }
 
 static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
-                                 BitstreamContext *bitstream,
-                                 uint8_t *palette_max) {
+                                 BitstreamContext *bitstream) {
   size_t size = w * h * d;
   uint8_t *buf = checked_malloc(size);
   uint8_t *image = buf;
@@ -112,7 +115,6 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
   const HuffmanHeader *headers = &sprites.lz77.dys;
   for (size_t i = 0; i < 4; i++)
     huffman_init(&contexts[i], &headers[i]);
-  *palette_max = 0;
   while (buf < image + size) {
     size_t offset = buf - image;
     uint8_t y = offset / w;
@@ -129,15 +131,19 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
       buf[i] = buf[i - delta];
     buf += runlen;
 
-    if (buf < image + size) {
-      uint8_t value = huffman_decode(&contexts[3], bitstream);
-      if (value > *palette_max)
-        *palette_max = value;
-
-      *(buf++) = value;
-    }
+    if (buf < image + size)
+      *(buf++) = huffman_decode(&contexts[3], bitstream);
   }
   return image;
+}
+
+static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
+
+static uint8_t palette_max(uint8_t *image, uint8_t w, uint8_t h) {
+  uint8_t res = 0;
+  for (size_t i = 0; i < w * h; i++)
+    res = max(res, image[i]);
+  return res;
 }
 
 static char *out;
@@ -276,12 +282,14 @@ int main(int argc, char *argv[]) {
     huffman_init(&color_context, &sprites.palettes);
     for (size_t i = 0; i < sprites.count; i++) {
       uint8_t w = images[i].w, h = images[i].h, d = images[i].d;
-      uint8_t palette_max;
-      uint8_t *image = decompress_image(w, h, d, &bitstream, &palette_max);
-      uint8_t palette[16][3];
-      for (int j = 0; j < 2; j++) {
-        decompress_palette(&bitstream, &color_context, palette_max, palette);
-        draw(w, h, image, palette);
+      uint8_t *image = decompress_image(w, h, d, &bitstream);
+      uint8_t palettes[2][16][3];
+      for (size_t z = 0; z < d; z++) {
+        uint8_t *frame = image + w * h * z;
+        decompress_palette(&bitstream, &color_context, palette_max(frame, w, h),
+                           palettes);
+        for (int j = 0; j < 2; j++)
+          draw(w, h, frame, palettes[j]);
       }
       free(image);
     }
@@ -299,11 +307,10 @@ int main(int argc, char *argv[]) {
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
     BitstreamContext bitstream = {sprites.bitstream, offset};
 
-    uint8_t palette_max;
-    uint8_t *image = decompress_image(w, h, d, &bitstream, &palette_max);
+    uint8_t *image = decompress_image(w, h, d, &bitstream);
 
     uint8_t palette[16][3];
-    choose_palette(&bitstream, palette_max, palette);
+    choose_palette(&bitstream, palette_max(image, w, h), palette);
 
     draw(w, h, image, palette);
     free(image);

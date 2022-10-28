@@ -210,8 +210,10 @@ def read_images():
                 image_stream.extend(image)
                 p = list(palette.keys())
                 for key, c in palette.items():
-                    p[c] = key
-                palettes.extend(p[1 : max(image) + 1])
+                    p[inv[c]] = key
+                palettes.extend(
+                    x for pair in p[1 : max(image) + 1] for c in pair for x in c
+                )
             size = (xh - xl + 1, yh - yl + 1, n)
             images.append((size, image_stream, palettes))
     return images
@@ -223,17 +225,8 @@ def compress_image(d2bs, input):
 
 
 def compress_images(uncompressed, pool):
-    palettes = []
-    for _, _, palette in uncompressed:
-        regular_palette = []
-        shiny_palette = []
-        for regular, shiny in palette:
-            regular_palette.extend(regular)
-            shiny_palette.extend(shiny)
-        palettes.append((regular_palette, shiny_palette))
-    colors = huffman_encode(
-        [x for pairs in palettes for palette in pairs for x in palette]
-    )
+    palettes = [palette for _, _, palette in uncompressed]
+    colors = huffman_encode([c for palette in palettes for c in palette])
 
     LZ77_LEN = 4
     d2bs = [[1] * 256] * LZ77_LEN
@@ -252,15 +245,14 @@ def compress_images(uncompressed, pool):
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
         bitstreams = []
         bitlens = []
-        for stream, palette_pair in zip(streams, palettes):
+        for stream, palette in zip(streams, palettes):
             bitstream = []
             for t in stream:
                 for huffman, x in zip(lz, t):
                     if x >= 0:
                         bitstream.extend(huffman.data2bits[x])
-            for palette in palette_pair:
-                for value in palette:
-                    bitstream.extend(colors.data2bits[value])
+            for c in palette:
+                bitstream.extend(colors.data2bits[c])
             bitlens.append(len(bitstream))
             bitstreams.extend(bitstream)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000), file=stderr)
