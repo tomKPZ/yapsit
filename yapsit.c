@@ -117,7 +117,7 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
     huffman_init(&contexts[i], &headers[i]);
   while (buf < image + size) {
     size_t offset = buf - image;
-    uint8_t y = offset / w;
+    uint32_t y = offset / w;
     uint8_t x = offset % w;
 
     uint8_t dy = y ? huffman_decode(&contexts[0], bitstream) : 0;
