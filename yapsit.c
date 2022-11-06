@@ -111,20 +111,23 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
   size_t size = w * h * d;
   uint8_t *buf = checked_malloc(size);
   uint8_t *image = buf;
-  HuffmanContext contexts[4];
-  const HuffmanHeader *headers = &sprites.lz77.dys;
-  for (size_t i = 0; i < 4; i++)
+  HuffmanContext contexts[5];
+  const HuffmanHeader *headers = &sprites.lz77.dzs;
+  for (size_t i = 0; i < sizeof(contexts) / sizeof(contexts[0]); i++)
     huffman_init(&contexts[i], &headers[i]);
   while (buf < image + size) {
     size_t offset = buf - image;
-    uint32_t y = offset / w;
+    uint8_t z = offset / (w * h);
+    uint8_t y = offset % (w * h) / w;
     uint8_t x = offset % w;
 
-    uint8_t dy = y ? huffman_decode(&contexts[0], bitstream) : 0;
-    uint8_t dx = x || y ? huffman_decode(&contexts[1], bitstream) : 128;
+    uint8_t dz = z ? huffman_decode(&contexts[0], bitstream) : 0;
+    uint8_t dy = y || z ? huffman_decode(&contexts[1], bitstream) : 128;
+    uint8_t dx = x || y || z ? huffman_decode(&contexts[2], bitstream) : 128;
     int8_t dxi = dx - 128;
-    uint16_t delta = (w * dy) + dxi;
-    uint8_t runlen = delta ? huffman_decode(&contexts[2], bitstream) : 0;
+    int8_t dyi = dy - 128;
+    uint16_t delta = w * h * dz + w * dyi + dxi;
+    uint8_t runlen = delta ? huffman_decode(&contexts[3], bitstream) : 0;
 
     // Manual copy instead of memcpy/memmove to handle overlapping ranges.
     for (size_t i = 0; i < runlen; i++)
@@ -132,7 +135,7 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
     buf += runlen;
 
     if (buf < image + size)
-      *(buf++) = huffman_decode(&contexts[3], bitstream);
+      *(buf++) = huffman_decode(&contexts[4], bitstream);
   }
   return image;
 }

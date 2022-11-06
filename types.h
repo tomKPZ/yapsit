@@ -11,6 +11,7 @@ typedef struct {
 } HuffmanHeader;
 
 typedef struct {
+  const HuffmanHeader dzs;
   const HuffmanHeader dys;
   const HuffmanHeader dxs;
   const HuffmanHeader runlen;

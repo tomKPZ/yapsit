@@ -33,16 +33,22 @@ def create_palette(sprite, shiny):
 
 
 def lz77(data, size, data2bits):
-    width, _, _ = size
-    # TODO: multiple representations of (dy, dx) for the same delta.
+    width, height, _ = size
+    # TODO: multiple representations of (dz, dy, dx) for the same delta.
     def nbits(output):
         return sum((d2b[out] if out >= 0 else 0) for out, d2b in zip(output, data2bits))
 
     n = len(data)
-    dp: list[tuple[int, tuple[int, int, int, int], int]] = [(0, (-1,) * 4, -1)] * n
+    dp: list[tuple[int, tuple[int, int, int, int, int], int]] = [(0, (-1,) * 5, -1)] * n
     for i in reversed(range(n)):
         size, tail = (dp[i + 1][0], i + 1) if i + 1 < n else (0, -1)
-        out = (-1 if i < width else 0, -1 if i == 0 else 128, -1, data[i])
+        out = (
+            -1 if i < width * height else 0,
+            -1 if i < width else 128,
+            -1 if i == 0 else 128,
+            -1,
+            data[i],
+        )
         ans = (size + nbits(out), out, tail)
         for j in range(i):
             for k in range(j, n - i + j):
@@ -52,15 +58,20 @@ def lz77(data, size, data2bits):
                 if runlen >= 256:
                     break
                 y1, x1 = divmod(j, width)
+                z1, y1 = divmod(y1, height)
                 y2, x2 = divmod(i, width)
-                dy, dx = y2 - y1, x2 - x1 + 128
-                if not (0 <= dx < 256 and 0 <= dy < 256):
+                z2, y2 = divmod(y2, height)
+                dz = z2 - z1
+                dy = y2 - y1 + 128
+                dx = x2 - x1 + 128
+                if not (0 <= dx < 256 and 0 <= dy < 256 and 0 <= dz < 256):
                     continue
                 index = i + runlen + 1
                 size, tail = (dp[index][0], index) if index < n else (0, -1)
                 out = (
-                    dy if y2 else -1,
-                    dx if y2 or x2 else -1,
+                    dz if z2 else -1,
+                    dy if z2 or y2 else -1,
+                    dx if z2 or y2 or x2 else -1,
                     runlen if dy or dx else -1,
                     data[i + runlen] if i + runlen < n else -1,
                 )
@@ -228,7 +239,7 @@ def compress_images(uncompressed, pool):
     palettes = [palette for _, _, palette in uncompressed]
     colors = huffman_encode([c for palette in palettes for c in palette])
 
-    LZ77_LEN = 4
+    LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
     for _ in range(3):
         sizes, streams = zip(*pool.map(partial(compress_image, d2bs), uncompressed))
