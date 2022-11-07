@@ -143,7 +143,7 @@ def pixel(montage, x, y):
 def read_images():
     cmm = {(i, j): 0 for i in range(16) for j in range(16)}
     metadata = load(open(path.join(ASSETS_DIR, "metadata.json")))
-    images = []
+    images = defaultdict(list)
     for (w, h), group in metadata:
         spritess = defaultdict(list)
         for name, variants_id, variant_counts in group:
@@ -155,7 +155,7 @@ def read_images():
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if i >= 1 or i == 385 or variant_count > 6:
+                if i >= 2 or i == 385 or variant_count > 6:
                     row += variant_count
                     continue
                 for _ in range(variant_count):
@@ -171,7 +171,7 @@ def read_images():
                     spritess[i].append((sprite, palette))
 
                     row += 1
-        for sprites in spritess.values():
+        for id, sprites in spritess.items():
             xl = yl = 255
             xh = yh = 0
             for sprite, _ in sprites:
@@ -223,8 +223,8 @@ def read_images():
                     x for pair in p[1 : max(image) + 1] for c in pair for x in c
                 )
             size = (xh - xl + 1, yh - yl + 1, n)
-            images.append((size, image_stream, palettes))
-    return images
+            images[id].append((size, image_stream, palettes))
+    return [x for xs in images.values() for x in xs]
 
 
 def compress_image(d2bs, input):
