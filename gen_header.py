@@ -243,7 +243,9 @@ def compress_images(uncompressed, pool):
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
     for _ in range(3):
-        sizes, streams = zip(*pool.map(partial(compress_image, d2bs), uncompressed))
+        sizes, streams = zip(
+            *pool.map(partial(compress_image, d2bs), uncompressed, chunksize=1)
+        )
         # TODO: repaletteize based on value stream.
 
         all_streams = [[] for _ in range(LZ77_LEN)]
@@ -252,7 +254,7 @@ def compress_images(uncompressed, pool):
                 for i, x in enumerate(t):
                     if x >= 0:
                         all_streams[i].append(x)
-        lz = tuple(pool.map(huffman_encode, all_streams))
+        lz = tuple(pool.map(huffman_encode, all_streams, chunksize=1))
 
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
         bitstreams = []
@@ -315,7 +317,7 @@ def output(sizes, colors, bitstream, bitlens, lz):
 
 
 def main():
-    pool = Pool()
+    pool = Pool(maxtasksperchild=1)
     uncompressed_images = read_images()
     output(*compress_images(uncompressed_images, pool))
 
