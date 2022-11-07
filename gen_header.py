@@ -13,7 +13,9 @@ import PIL.Image
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = "/home/tom/dev/local/pokemon-sprites"
-MONTAGES = set(["firered", "ruby", "emerald"])
+MONTAGES = set(
+    ["ruby", "firered", "emerald", "diamond", "platinum", "heartgold", "black"]
+)
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 
@@ -51,28 +53,21 @@ def lz77(data, size, data2bits):
         )
         ans = (size + nbits(out), out, tail)
         for j in range(i):
-            for k in range(j, n - i + j):
+            for k in range(j, min(n - i + j, j + 255)):
                 if data[k] != data[k + i - j]:
-                    break
-                runlen = k - j + 1
-                if runlen >= 256:
                     break
                 y1, x1 = divmod(j, width)
                 z1, y1 = divmod(y1, height)
                 y2, x2 = divmod(i, width)
                 z2, y2 = divmod(y2, height)
-                dz = z2 - z1
-                dy = y2 - y1 + 128
-                dx = x2 - x1 + 128
-                if not (0 <= dx < 256 and 0 <= dy < 256 and 0 <= dz < 256):
-                    continue
+                runlen = k - j + 1
                 index = i + runlen + 1
                 size, tail = (dp[index][0], index) if index < n else (0, -1)
                 out = (
-                    dz if z2 else -1,
-                    dy if z2 or y2 else -1,
-                    dx if z2 or y2 or x2 else -1,
-                    runlen if dy or dx else -1,
+                    z2 - z1 if z2 else -1,
+                    y2 - y1 + 128 if z2 or y2 else -1,
+                    x2 - x1 + 128 if z2 or y2 or x2 else -1,
+                    runlen if i != j else -1,
                     data[i + runlen] if i + runlen < n else -1,
                 )
                 ans = min(ans, (size + nbits(out), out, tail))
@@ -160,7 +155,8 @@ def read_images():
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if i >= 1:
+                if i >= 1 or i == 385 or variant_count > 6:
+                    row += variant_count
                     continue
                 for _ in range(variant_count):
                     data = []
@@ -220,6 +216,7 @@ def read_images():
                 image = [inv[c] for c in sprite]
                 image_stream.extend(image)
                 p = list(palette.keys())
+                p += [((0, 0, 0), (0, 0, 0))] * (16 - len(p))
                 for key, c in palette.items():
                     p[inv[c]] = key
                 palettes.extend(
