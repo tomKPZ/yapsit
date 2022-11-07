@@ -16,6 +16,7 @@ ASSETS_DIR = "/home/tom/dev/local/pokemon-sprites"
 MONTAGES = set(
     ["ruby", "firered", "emerald", "diamond", "platinum", "heartgold", "black"]
 )
+FRAMES = [1, 2, 2, 1, 1, 2]
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 
@@ -159,16 +160,19 @@ def read_images():
                     row += variant_count
                     continue
                 for _ in range(variant_count):
-                    data = []
-                    shiny = []
-                    for y in range(h):
-                        for x in range(w):
-                            data.append(pixel(montage, x, y + h * row))
-                            shiny.append(pixel(montage, x + w, y + h * row))
+                    for frame in range(FRAMES[variants_id]):
+                        data = []
+                        shiny = []
+                        for y in range(h):
+                            for x in range(w):
+                                xp = 2 * frame * w + x
+                                yp = h * row + y
+                                data.append(pixel(montage, xp, yp))
+                                shiny.append(pixel(montage, w + xp, yp))
 
-                    palette = create_palette(data, shiny)
-                    sprite = [palette[colors] for colors in zip(data, shiny)]
-                    spritess[i].append((sprite, palette))
+                        palette = create_palette(data, shiny)
+                        sprite = [palette[colors] for colors in zip(data, shiny)]
+                        spritess[i].append((sprite, palette))
 
                     row += 1
         for id, sprites in spritess.items():
