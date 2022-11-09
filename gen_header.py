@@ -12,7 +12,7 @@ from sys import stderr
 import PIL.Image
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
-ASSETS_DIR = "/home/tom/dev/local/pokemon-sprites"
+ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
 MONTAGES = set(
     ["ruby", "firered", "emerald", "diamond", "platinum", "heartgold", "black"]
 )
@@ -156,7 +156,7 @@ def read_images():
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if i >= 2 or i == 385 or variant_count > 6:
+                if variant_count > 8:
                     row += variant_count
                     continue
                 for _ in range(variant_count):
