@@ -10,6 +10,7 @@ from os import path
 from sys import stderr
 
 import PIL.Image
+from cffi import FFI
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
@@ -36,49 +37,25 @@ def create_palette(sprite, shiny):
 
 
 def lz77(data, size, data2bits):
-    width, height, _ = size
-    # TODO: multiple representations of (dz, dy, dx) for the same delta.
-    def nbits(output):
-        return sum((d2b[out] if out >= 0 else 0) for out, d2b in zip(output, data2bits))
+    ffibuilder = FFI()
+    ffibuilder.cdef(
+        """
+void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
+          const uint8_t data[], const uint8_t data2bits[5][256], int dp[][7]);
+"""
+    )
+    lib = ffibuilder.dlopen(path.join(SCRIPT_DIR, "liblz77.so"))
 
-    n = len(data)
-    dp: list[tuple[int, tuple[int, int, int, int, int], int]] = [(0, (-1,) * 5, -1)] * n
-    for i in reversed(range(n)):
-        size, tail = (dp[i + 1][0], i + 1) if i + 1 < n else (0, -1)
-        out = (
-            -1 if i < width * height else 0,
-            -1 if i < width else 128,
-            -1 if i == 0 else 128,
-            -1,
-            data[i],
-        )
-        ans = (size + nbits(out), out, tail)
-        for j in range(i):
-            for k in range(j, min(n - i + j, j + 255)):
-                if data[k] != data[k + i - j]:
-                    break
-                y1, x1 = divmod(j, width)
-                z1, y1 = divmod(y1, height)
-                y2, x2 = divmod(i, width)
-                z2, y2 = divmod(y2, height)
-                runlen = k - j + 1
-                index = i + runlen + 1
-                size, tail = (dp[index][0], index) if index < n else (0, -1)
-                out = (
-                    z2 - z1 if z2 else -1,
-                    y2 - y1 + 128 if z2 or y2 else -1,
-                    x2 - x1 + 128 if z2 or y2 or x2 else -1,
-                    runlen if i != j else -1,
-                    data[i + runlen] if i + runlen < n else -1,
-                )
-                ans = min(ans, (size + nbits(out), out, tail))
-        dp[i] = ans
+    n = len(data) + 1
+    dp = ffibuilder.new("int[%d][7]" % n, [[0] + [-1] * 6] * n)
+    lib.lz77(*size, data, data2bits, dp)
+    ffibuilder.dlclose(lib)
 
     node = 0
     ans = []
-    while node >= 0:
-        _, first, node = dp[node]
-        ans.append(first)
+    while node < n - 1:
+        _, a, b, c, d, e, node = dp[node]
+        ans.append((a, b, c, d, e))
     return ans
 
 
@@ -156,7 +133,7 @@ def read_images():
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if variant_count > 8:
+                if i > 0 or variant_count > 8:
                     row += variant_count
                     continue
                 for _ in range(variant_count):
@@ -317,7 +294,7 @@ def output(sizes, colors, bitstream, bitlens, lz):
 
 
 def main():
-    pool = Pool(maxtasksperchild=1)
+    pool = Pool()
     uncompressed_images = read_images()
     output(*compress_images(uncompressed_images, pool))
 
