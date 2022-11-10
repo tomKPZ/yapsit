@@ -29,7 +29,7 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
     };
     ans[0] += nbits(&ans[1], data2bits);
     for (int j = 0; j < i; j++) {
-      int upper = min(n - i + j, j + 255);
+      int upper = min(n - i + j, j + 256);
       for (int k = j; k < upper; k++) {
         if (data[k] != data[k + i - j])
           break;
@@ -48,7 +48,7 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
             z2 ? z2 - z1 : -1,
             z2 || y2 ? y2 - y1 + 128 : -1,
             z2 || y2 || x2 ? x2 - x1 + 128 : -1,
-            i != j ? runlen : -1,
+            i != j ? runlen - 1 : -1,
             i + runlen < n ? data[i + runlen] : -1,
             index,
         };
