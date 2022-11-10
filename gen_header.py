@@ -54,8 +54,8 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
     node = 0
     ans = []
     while node < n - 1:
-        _, a, b, c, d, e, node = dp[node]
-        ans.append((a, b, c, d, e))
+        ans.append(list(dp[node])[2:])
+        node = dp[node][1]
     return ans
 
 
