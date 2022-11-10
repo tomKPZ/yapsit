@@ -20,14 +20,14 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
   for (int i = n; i-- > 0;) {
     int ans[7] = {
         dp[i + 1][0],
+        i + 1,
         i < width * height ? -1 : 0,
         i < width ? -1 : 128,
         i == 0 ? -1 : 128,
         -1,
         data[i],
-        i + 1,
     };
-    ans[0] += nbits(&ans[1], data2bits);
+    ans[0] += nbits(&ans[2], data2bits);
     for (int j = 0; j < i; j++) {
       int upper = min(n - i + j, j + 256);
       for (int k = j; k < upper; k++) {
@@ -45,14 +45,14 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
         int index = i + runlen + 1;
         int node[7] = {
             dp[index][0],
+            index,
             z2 ? z2 - z1 : -1,
             z2 || y2 ? y2 - y1 + 128 : -1,
             z2 || y2 || x2 ? x2 - x1 + 128 : -1,
             i != j ? runlen - 1 : -1,
             i + runlen < n ? data[i + runlen] : -1,
-            index,
         };
-        node[0] += nbits(&node[1], data2bits);
+        node[0] += nbits(&node[2], data2bits);
         if (node[0] <= ans[0])
           memcpy(ans, node, 7 * sizeof(int));
       }
