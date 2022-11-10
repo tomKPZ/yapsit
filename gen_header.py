@@ -15,9 +15,20 @@ from cffi import FFI
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
 MONTAGES = set(
-    ["ruby", "firered", "emerald", "diamond", "platinum", "heartgold", "black"]
+    [
+        "ruby",
+        "firered",
+        "emerald",
+        "diamond",
+        "platinum",
+        "heartgold",
+        "black",
+        "old",
+        "icons",
+    ]
 )
 FRAMES = [1, 2, 2, 1, 1, 2]
+SHINY = [1, 1, 1, 0, 0, 1]
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 
@@ -133,7 +144,7 @@ def read_images():
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if i > 0 or variant_count > 8:
+                if i > 0 or variant_count > 6:
                     row += variant_count
                     continue
                 for _ in range(variant_count):
@@ -145,7 +156,11 @@ def read_images():
                                 xp = 2 * frame * w + x
                                 yp = h * row + y
                                 data.append(pixel(montage, xp, yp))
-                                shiny.append(pixel(montage, w + xp, yp))
+                                # TODO: Don't output shiny palette if not necessary.
+                                if SHINY[variants_id]:
+                                    shiny.append(pixel(montage, w + xp, yp))
+                                else:
+                                    shiny.append(pixel(montage, xp, yp))
 
                         palette = create_palette(data, shiny)
                         sprite = [palette[colors] for colors in zip(data, shiny)]
@@ -219,7 +234,7 @@ def compress_images(uncompressed, pool):
 
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
-    for _ in range(3):
+    for _ in range(1):
         sizes, streams = zip(
             *pool.map(partial(compress_image, d2bs), uncompressed, chunksize=1)
         )
