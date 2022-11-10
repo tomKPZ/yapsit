@@ -127,7 +127,7 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
     int8_t dxi = dx - 128;
     int8_t dyi = dy - 128;
     uint16_t delta = w * h * dz + w * dyi + dxi;
-    uint8_t runlen = delta ? huffman_decode(&contexts[3], bitstream) : 0;
+    size_t runlen = delta ? 1 + huffman_decode(&contexts[3], bitstream) : 0;
 
     // Manual copy instead of memcpy/memmove to handle overlapping ranges.
     for (size_t i = 0; i < runlen; i++)
