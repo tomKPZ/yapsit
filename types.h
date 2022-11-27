@@ -46,10 +46,13 @@ typedef struct {
 
 typedef struct {
   const Sprite *images;
-  const size_t count;
+  const uint16_t count;
+  const uint16_t ids;
   const Lz77Header lz77;
   const HuffmanHeader palettes;
   const uint8_t *bitstream;
+  const uint8_t *variants;
+  const uint16_t *limits;
 } Sprites;
 
 #endif
