@@ -135,12 +135,14 @@ def read_images():
     images = defaultdict(list)
     variants = defaultdict(list)
     limits = defaultdict(int)
+    groups = defaultdict(int)
     for gid, ((w, h), group) in enumerate(metadata):
         spritess = defaultdict(list)
         for name, variants_id, variant_counts in group:
             if name not in MONTAGES:
                 continue
             limits[gid] = len(variant_counts)
+            groups[gid] += 1
             montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert(
                 "RGBA"
             )
@@ -229,7 +231,8 @@ def read_images():
     ids = len(images)
     images = [x for xs in images.values() for x in xs]
     limits = [v for _, v in sorted(limits.items())]
-    return images, variants, limits, ids
+    groups = [v for _, v in sorted(groups.items())]
+    return images, variants, limits, groups, ids
 
 
 def compress_image(d2bs, input):
@@ -296,13 +299,16 @@ def output_huffman(form, perm):
     print("}}")
 
 
-def output(sizes, colors, bitstream, bitlens, lz, variants, limits, ids):
+def output(sizes, colors, bitstream, bitlens, lz, variants, limits, groups, ids):
     print('#include "types.h"')
     print("static const uint8_t variants[] = {")
     print(",".join(str(v) for v in variants))
     print("};")
     print("static const uint16_t limits[] = {")
     print(",".join(str(l) for l in limits))
+    print("};")
+    print("static const uint8_t groups[] = {")
+    print(",".join(str(g) for g in groups))
     print("};")
     print("static const Sprite sprite_data[] = {")
     for (w, h, d), bitlen in zip(sizes, bitlens):
@@ -321,13 +327,13 @@ def output(sizes, colors, bitstream, bitlens, lz, variants, limits, ids):
         print(",")
     print("},")
     output_huffman(colors.form, colors.perm)
-    print(",bitstream,variants,limits};")
+    print(",bitstream, variants, limits, groups, %d};" % len(groups))
 
 
 def main():
     pool = Pool()
-    images, variants, limits, ids = read_images()
-    output(*compress_images(images, pool), variants, limits, ids)
+    images, variants, limits, groups, ids = read_images()
+    output(*compress_images(images, pool), variants, limits, groups, ids)
 
 
 if __name__ == "__main__":

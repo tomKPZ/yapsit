@@ -67,9 +67,6 @@ static uint8_t huffman_decode(HuffmanContext *context,
   }
 }
 
-// TODO: unhardcode
-static uint8_t groups[] = {3, 3, 1, 1, 1};
-
 static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset,
                                    uint8_t *z_out) {
   size_t n = 0;
@@ -78,12 +75,11 @@ static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset,
   const Sprite *image = sprites.images;
   const uint8_t *variants = sprites.variants;
   for (size_t id = 0; id < sprites.ids; id++) {
-    // TODO: unhardcode
-    for (size_t gid = 0; gid < 5; gid++) {
+    for (size_t gid = 0; gid < sprites.n_groups; gid++) {
       if (id >= sprites.limits[gid])
         continue;
       uint8_t z = 0;
-      for (size_t g = 0; g < groups[gid]; g++) {
+      for (size_t g = 0; g < sprites.groups[gid]; g++) {
         for (size_t v = 0; v < *variants; v++) {
           if (image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
               rand() % (++n) == 0) {
