@@ -133,20 +133,25 @@ def read_images():
     cmm = {(i, j): 0 for i in range(16) for j in range(16)}
     metadata = load(open(path.join(ASSETS_DIR, "metadata.json")))
     images = defaultdict(list)
-    for (w, h), group in metadata:
+    variants = defaultdict(list)
+    limits = defaultdict(int)
+    for gid, ((w, h), group) in enumerate(metadata):
         spritess = defaultdict(list)
         for name, variants_id, variant_counts in group:
             if name not in MONTAGES:
                 continue
+            limits[gid] = len(variant_counts)
             montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert(
                 "RGBA"
             )
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if i > 0 or variant_count > 6:
+                if i > 10 or variant_count > 6:
+                    variants[i].append(0)
                     row += variant_count
                     continue
+                variants[i].append(variant_count)
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
@@ -220,7 +225,11 @@ def read_images():
                 )
             size = (xh - xl + 1, yh - yl + 1, n)
             images[id].append((size, image_stream, palettes))
-    return [x for xs in images.values() for x in xs]
+    variants = sum((v for _, v in sorted(variants.items())), start=[])
+    ids = len(images)
+    images = [x for xs in images.values() for x in xs]
+    limits = [v for _, v in sorted(limits.items())]
+    return images, variants, limits, ids
 
 
 def compress_image(d2bs, input):
@@ -287,8 +296,14 @@ def output_huffman(form, perm):
     print("}}")
 
 
-def output(sizes, colors, bitstream, bitlens, lz):
+def output(sizes, colors, bitstream, bitlens, lz, variants, limits, ids):
     print('#include "types.h"')
+    print("static const uint8_t variants[] = {")
+    print(",".join(str(v) for v in variants))
+    print("};")
+    print("static const uint16_t limits[] = {")
+    print(",".join(str(l) for l in limits))
+    print("};")
     print("static const Sprite sprite_data[] = {")
     for (w, h, d), bitlen in zip(sizes, bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
@@ -299,19 +314,20 @@ def output(sizes, colors, bitstream, bitlens, lz):
     print("const Sprites sprites = {")
     print("sprite_data,")
     print("%d," % len(sizes))
+    print("%d," % ids)
     print("{")
     for field in lz:
         output_huffman(field.form, field.perm)
         print(",")
     print("},")
     output_huffman(colors.form, colors.perm)
-    print(",bitstream};")
+    print(",bitstream,variants,limits};")
 
 
 def main():
     pool = Pool()
-    uncompressed_images = read_images()
-    output(*compress_images(uncompressed_images, pool))
+    images, variants, limits, ids = read_images()
+    output(*compress_images(images, pool), variants, limits, ids)
 
 
 if __name__ == "__main__":
