@@ -75,6 +75,7 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
   const Sprite *image = sprites.images;
   const uint8_t *variants = sprites.variants;
   for (size_t id = 0; id < sprites.ids; id++) {
+    uint8_t sheet = 0;
     for (size_t gid = 0; gid < sprites.n_groups; gid++) {
       if (id >= sprites.limits[gid])
         continue;
@@ -82,6 +83,7 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
       for (size_t g = 0; g < sprites.groups[gid]; g++) {
         for (size_t v = 0; v < *variants; v++) {
           if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
+              sheet >= args->sheet_lo && sheet <= args->sheet_hi &&
               (v == 0 || args->variants) && image->w <= max_w &&
               (image->h + 1) / 2 + 2 <= max_h && rand() % (++n) == 0) {
             sprite = image;
@@ -91,6 +93,7 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
           z++;
         }
         variants++;
+        sheet++;
       }
       offset += image->bitlen;
       image++;
@@ -262,26 +265,36 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
 
 static struct argp_option options[] = {
     {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
+    {"sheet", 's', "ID[-ID]", 0, "Filter by sprite sheet", 0},
     {"variants", 'v', 0, 0, "Allow variants", 0},
     {"test", 't', 0, 0, "Output all sprites", 1},
     {0},
 };
 
+static bool parse_range(char *arg, uint16_t *lo, uint16_t *hi) {
+  // TODO: Input validation.
+  char *upper = strchr(arg, '-');
+  if (upper) {
+    *upper++ = '\0';
+    *lo = atoi(arg);
+    *hi = atoi(upper);
+  } else {
+    *lo = *hi = atoi(arg);
+  }
+  return true;
+}
+
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   Arguments *args = state->input;
   switch (key) {
-  case 'i': {
-    // TODO: Input validation.
-    char *hi = strchr(arg, '-');
-    if (hi) {
-      *hi++ = '\0';
-      args->id_lo = atoi(arg);
-      args->id_hi = atoi(hi);
-    } else {
-      args->id_lo = args->id_hi = atoi(arg);
-    }
+  case 'i':
+    if (!parse_range(arg, &args->id_lo, &args->id_hi))
+      return ARGP_ERR_UNKNOWN;
     break;
-  }
+  case 's':
+    if (!parse_range(arg, &args->sheet_lo, &args->sheet_hi))
+      return ARGP_ERR_UNKNOWN;
+    break;
   case 'v':
     args->variants = true;
     break;
@@ -303,6 +316,8 @@ int main(int argc, char *argv[]) {
   Arguments args;
   args.id_lo = 0;
   args.id_hi = 0xffff;
+  args.sheet_lo = 0;
+  args.sheet_hi = 0xffff;
   args.variants = false;
   args.test = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
