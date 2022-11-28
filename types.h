@@ -60,6 +60,8 @@ typedef struct {
 typedef struct {
   uint16_t id_lo;
   uint16_t id_hi;
+  uint16_t sheet_lo;
+  uint16_t sheet_hi;
   bool variants;
   bool test;
 } Arguments;
