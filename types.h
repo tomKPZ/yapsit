@@ -54,6 +54,7 @@ typedef struct {
   const uint8_t *variants;
   const uint16_t *limits;
   const uint8_t *groups;
+  const uint8_t *frames;
   const uint8_t n_groups;
 } Sprites;
 
@@ -64,6 +65,8 @@ typedef struct {
   uint16_t sheet_hi;
   uint16_t variants_lo;
   uint16_t variants_hi;
+  uint16_t frame_lo;
+  uint16_t frame_hi;
   bool test;
 } Arguments;
 

@@ -82,16 +82,19 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
       uint8_t z = 0;
       for (size_t g = 0; g < sprites.groups[gid]; g++) {
         for (size_t v = 0; v < *variants; v++) {
-          if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
-              sheet >= args->sheet_lo && sheet <= args->sheet_hi &&
-              v >= args->variants_lo && v <= args->variants_hi &&
-              image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
-              rand() % (++n) == 0) {
-            sprite = image;
-            *bit_offset = offset;
-            *z_out = z;
+          for (size_t f = 0; f < sprites.frames[sheet]; f++) {
+            if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
+                sheet >= args->sheet_lo && sheet <= args->sheet_hi &&
+                v >= args->variants_lo && v <= args->variants_hi &&
+                f >= args->frame_lo && f <= args->frame_hi &&
+                image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
+                rand() % (++n) == 0) {
+              sprite = image;
+              *bit_offset = offset;
+              *z_out = z;
+            }
+            z++;
           }
-          z++;
         }
         variants++;
         sheet++;
@@ -266,8 +269,9 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
 
 static struct argp_option options[] = {
     {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
-    {"sheet", 's', "ID[-ID]", 0, "Filter by sprite sheet", 0},
-    {"variants", 'v', "ID[-ID]", 0, "Filter by variant ID", 0},
+    {"sheet", 's', "SID[-SID]", 0, "Filter by sprite sheet", 0},
+    {"variants", 'v', "VID[-VID]", 0, "Filter by variant ID", 0},
+    {"frame", 'f', "FID[-FID]", 0, "Filter by frame number", 0},
     {"test", 't', 0, 0, "Output all sprites", 1},
     {0},
 };
@@ -300,6 +304,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     if (!parse_range(arg, &args->variants_lo, &args->variants_hi))
       return ARGP_ERR_UNKNOWN;
     break;
+  case 'f':
+    if (!parse_range(arg, &args->frame_lo, &args->frame_hi))
+      return ARGP_ERR_UNKNOWN;
+    break;
   case 't':
     args->test = true;
     break;
@@ -322,6 +330,8 @@ int main(int argc, char *argv[]) {
   args.sheet_hi = 0xffff;
   args.variants_lo = 0;
   args.variants_hi = 0xffff;
+  args.frame_lo = 0;
+  args.frame_hi = 0xffff;
   args.test = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;
