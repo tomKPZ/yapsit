@@ -84,8 +84,9 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
         for (size_t v = 0; v < *variants; v++) {
           if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
               sheet >= args->sheet_lo && sheet <= args->sheet_hi &&
-              (v == 0 || args->variants) && image->w <= max_w &&
-              (image->h + 1) / 2 + 2 <= max_h && rand() % (++n) == 0) {
+              v >= args->variants_lo && v <= args->variants_hi &&
+              image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
+              rand() % (++n) == 0) {
             sprite = image;
             *bit_offset = offset;
             *z_out = z;
@@ -266,7 +267,7 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
 static struct argp_option options[] = {
     {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
     {"sheet", 's', "ID[-ID]", 0, "Filter by sprite sheet", 0},
-    {"variants", 'v', 0, 0, "Allow variants", 0},
+    {"variants", 'v', "ID[-ID]", 0, "Filter by variant ID", 0},
     {"test", 't', 0, 0, "Output all sprites", 1},
     {0},
 };
@@ -296,7 +297,8 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
       return ARGP_ERR_UNKNOWN;
     break;
   case 'v':
-    args->variants = true;
+    if (!parse_range(arg, &args->variants_lo, &args->variants_hi))
+      return ARGP_ERR_UNKNOWN;
     break;
   case 't':
     args->test = true;
@@ -318,7 +320,8 @@ int main(int argc, char *argv[]) {
   args.id_hi = 0xffff;
   args.sheet_lo = 0;
   args.sheet_hi = 0xffff;
-  args.variants = false;
+  args.variants_lo = 0;
+  args.variants_hi = 0xffff;
   args.test = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;

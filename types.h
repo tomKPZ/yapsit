@@ -62,7 +62,8 @@ typedef struct {
   uint16_t id_hi;
   uint16_t sheet_lo;
   uint16_t sheet_hi;
-  bool variants;
+  uint16_t variants_lo;
+  uint16_t variants_hi;
   bool test;
 } Arguments;
 
