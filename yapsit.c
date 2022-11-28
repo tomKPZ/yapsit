@@ -67,8 +67,8 @@ static uint8_t huffman_decode(HuffmanContext *context,
   }
 }
 
-static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset,
-                                   uint8_t *z_out) {
+static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
+                                   size_t *bit_offset, uint8_t *z_out) {
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offset = 0;
@@ -81,7 +81,8 @@ static const Sprite *choose_sprite(int max_w, int max_h, size_t *bit_offset,
       uint8_t z = 0;
       for (size_t g = 0; g < sprites.groups[gid]; g++) {
         for (size_t v = 0; v < *variants; v++) {
-          if (image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
+          if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
+              image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
               rand() % (++n) == 0) {
             sprite = image;
             *bit_offset = offset;
@@ -261,20 +262,27 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
 
 static struct argp_option options[] = {
     {"test", 't', 0, 0, "Output all sprites.", 0},
+    {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
     {0},
 };
 
-struct arguments {
-  bool test;
-};
-
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-  (void)arg;
-  struct arguments *arguments = state->input;
+  Arguments *args = state->input;
   switch (key) {
   case 't':
-    arguments->test = true;
+    args->test = true;
     break;
+  case 'i': {
+    char *hi = strchr(arg, '-');
+    if (hi) {
+      *hi++ = '\0';
+      args->id_lo = atoi(arg);
+      args->id_hi = atoi(hi);
+    } else {
+      args->id_lo = args->id_hi = atoi(arg);
+    }
+    break;
+  }
   case ARGP_KEY_ARG:
     return 0;
   default:
@@ -287,14 +295,16 @@ static struct argp argp = {
     options, parse_opt, 0, "Show a random pokemon sprite.", 0, 0, 0};
 
 int main(int argc, char *argv[]) {
-  struct arguments arguments;
-  arguments.test = false;
-  if (argp_parse(&argp, argc, argv, 0, 0, &arguments))
+  Arguments args;
+  args.test = false;
+  args.id_lo = 0;
+  args.id_hi = 0xffff;
+  if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;
 
   HuffmanContext color_context;
   huffman_init(&color_context, &sprites.palettes);
-  if (arguments.test) {
+  if (args.test) {
     const Sprite *images = sprites.images;
     BitstreamContext bitstream = {sprites.bitstream, 0};
     for (size_t i = 0; i < sprites.count; i++) {
@@ -319,7 +329,7 @@ int main(int argc, char *argv[]) {
     size_t offset;
     uint8_t z;
     const Sprite *sprite =
-        choose_sprite(term_size.ws_col, term_size.ws_row, &offset, &z);
+        choose_sprite(&args, term_size.ws_col, term_size.ws_row, &offset, &z);
     if (sprite == NULL)
       return 1;
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;

@@ -57,4 +57,10 @@ typedef struct {
   const uint8_t n_groups;
 } Sprites;
 
+typedef struct {
+  bool test;
+  uint16_t id_lo;
+  uint16_t id_hi;
+} Arguments;
+
 #endif
