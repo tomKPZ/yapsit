@@ -58,9 +58,10 @@ typedef struct {
 } Sprites;
 
 typedef struct {
-  bool test;
   uint16_t id_lo;
   uint16_t id_hi;
+  bool variants;
+  bool test;
 } Arguments;
 
 #endif

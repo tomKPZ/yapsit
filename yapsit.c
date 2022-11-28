@@ -82,8 +82,8 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
       for (size_t g = 0; g < sprites.groups[gid]; g++) {
         for (size_t v = 0; v < *variants; v++) {
           if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
-              image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
-              rand() % (++n) == 0) {
+              (v == 0 || args->variants) && image->w <= max_w &&
+              (image->h + 1) / 2 + 2 <= max_h && rand() % (++n) == 0) {
             sprite = image;
             *bit_offset = offset;
             *z_out = z;
@@ -261,18 +261,17 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
 }
 
 static struct argp_option options[] = {
-    {"test", 't', 0, 0, "Output all sprites.", 0},
     {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
+    {"variants", 'v', 0, 0, "Allow variants", 0},
+    {"test", 't', 0, 0, "Output all sprites", 1},
     {0},
 };
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   Arguments *args = state->input;
   switch (key) {
-  case 't':
-    args->test = true;
-    break;
   case 'i': {
+    // TODO: Input validation.
     char *hi = strchr(arg, '-');
     if (hi) {
       *hi++ = '\0';
@@ -283,6 +282,12 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     }
     break;
   }
+  case 'v':
+    args->variants = true;
+    break;
+  case 't':
+    args->test = true;
+    break;
   case ARGP_KEY_ARG:
     return 0;
   default:
@@ -296,9 +301,10 @@ static struct argp argp = {
 
 int main(int argc, char *argv[]) {
   Arguments args;
-  args.test = false;
   args.id_lo = 0;
   args.id_hi = 0xffff;
+  args.variants = false;
+  args.test = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;
 
