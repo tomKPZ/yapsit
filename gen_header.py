@@ -294,16 +294,16 @@ def output_bits(bits):
             encoded *= 2
             encoded += bit
         print("0x%02X," % encoded, end="")
-    print("}")
+    print("},")
 
 
 def output_huffman(form, perm):
     print("{")
     output_bits(list(form))
-    print(",{")
+    print("{")
     for x in perm:
         print("0x%02X," % x, end="")
-    print("}}")
+    print("}},")
 
 
 def output_array(name, arr):
@@ -315,44 +315,38 @@ def output_array(name, arr):
 
 def output(compressed, images):
     print('#include "types.h"')
-    print("static const Sprite sprite_data[] = {")
+    print("const Sprites sprites = {")
+    print("{")
     for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
-    print("};")
-    print("const Sprites sprites = {")
-    print("sprite_data,")
+    print("},")
     print("%d," % len(compressed.sizes))
     print("%d," % images.ids)
     print("{")
     for field in compressed.lz:
         output_huffman(field.form, field.perm)
-        print(",")
     print("},")
     output_huffman(compressed.colors.form, compressed.colors.perm)
-    print(",")
     output_bits(compressed.bitstream)
-    print(",")
     output_array("variants", images.variants)
     output_array("limits", images.limits)
     output_array("groups", images.groups)
     output_array("frames", images.frames)
     print("};")
 
-
-def output_constants(compressed: Compressed, images: Images):
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
         bitcount = (len(compressed.bitstream) + 7) // 8
         print("#define SHEET_COUNT %d" % len(images.frames), file=f)
         print("#define GROUP_COUNT %d" % len(images.groups), file=f)
         print("#define VARIANT_COUNT %d" % len(images.variants), file=f)
         print("#define BITSTREAM_LEN %d" % bitcount, file=f)
+        print("#define SPRITE_COUNT %d" % len(images.images), file=f)
 
 
 def main():
     images = read_images()
     compressed = compress_images(images.images)
     output(compressed, images)
-    output_constants(compressed, images)
 
 
 if __name__ == "__main__":
