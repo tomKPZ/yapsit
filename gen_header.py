@@ -51,20 +51,11 @@ def create_palette(sprite, shiny):
     return palette
 
 
-def lz77(data, size, data2bits):
-    ffibuilder = FFI()
-    ffibuilder.cdef(
-        """
-void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
-          const uint8_t data[], const uint8_t data2bits[5][256], int dp[][7]);
-"""
-    )
-    lib = ffibuilder.dlopen(path.join(SCRIPT_DIR, "liblz77.so"))
-
+def lz3d(data, size, data2bits):
     n = len(data) + 1
     dp = ffibuilder.new("int[%d][7]" % n, [[0] + [-1] * 6] * n)
-    lib.lz77(*size, data, data2bits, dp)  # type: ignore
-    ffibuilder.dlclose(lib)
+    window = 10000 if len(data) > 80000 else len(data)
+    lib.lz3d(*size, window, data, data2bits, dp)  # type: ignore
 
     node = 0
     ans = []
@@ -110,21 +101,22 @@ def huffman_encode(data):
     dfs(nodes[-1])
 
     total = sum(counter.values())
-    shannon = total * log2(total)
-    bitlen = 0
-    for x, count in counter.items():
-        shannon -= count * log2(count)
-        bitlen += count * len(data2bits[x])
-    print(
-        "%d/%d (+%.1fB) (+%.2f%%)"
-        % (
-            bitlen,
-            ceil(shannon),
-            (bitlen - shannon) / 8,
-            100 * (bitlen / shannon - 1),
-        ),
-        file=stderr,
-    )
+    if total:
+        shannon = total * log2(total)
+        bitlen = 0
+        for x, count in counter.items():
+            shannon -= count * log2(count)
+            bitlen += count * len(data2bits[x])
+        print(
+            "%d/%d (+%.1fB) (+%.2f%%)"
+            % (
+                bitlen,
+                ceil(shannon),
+                (bitlen - shannon) / 8,
+                100 * (bitlen / shannon - 1),
+            ),
+            file=stderr,
+        )
     return Huffman(form, perm, data2bits)
 
 
@@ -154,11 +146,6 @@ def read_images():
             )
             row = 0
             for i, variant_count in enumerate(variant_counts):
-                # TODO: remove
-                if i > 0 or variant_count > 6:
-                    variants[i].append(0)
-                    row += variant_count
-                    continue
                 variants[i].append(variant_count)
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
@@ -243,13 +230,24 @@ def read_images():
 
 def compress_image(d2bs, input):
     size, uncompressed, _ = input
-    return (size, lz77(uncompressed, size, d2bs))
+    return (size, lz3d(uncompressed, size, d2bs))
 
 
 def compress_images(uncompressed):
-    pool = Pool()
     palettes = [palette for _, _, palette in uncompressed]
     colors = huffman_encode([c for palette in palettes for c in palette])
+
+    global ffibuilder, lib
+    ffibuilder = FFI()
+    ffibuilder.cdef(
+        """
+void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
+          const uint8_t data[], const uint8_t data2bits[5][256], int dp[][7]);
+"""
+    )
+    lib = ffibuilder.dlopen(path.join(SCRIPT_DIR, "liblz77.so"))
+
+    pool = Pool()
 
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
@@ -281,6 +279,7 @@ def compress_images(uncompressed):
             bitlens.append(len(bitstream))
             bitstreams.extend(bitstream)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000), file=stderr)
+    ffibuilder.dlclose(lib)
     return Compressed(sizes, colors, bitstreams, bitlens, lz)  # type: ignore
 
 
