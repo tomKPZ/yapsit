@@ -306,17 +306,15 @@ def output_huffman(form, perm):
     print("}}")
 
 
+def output_array(name, arr):
+    print("// " + name)
+    print("{")
+    print(", ".join(str(x) for x in arr))
+    print("},")
+
+
 def output(compressed, images):
     print('#include "types.h"')
-    print("static const uint8_t variants[] = {")
-    print(",".join(str(v) for v in images.variants))
-    print("};")
-    print("static const uint16_t limits[] = {")
-    print(",".join(str(l) for l in images.limits))
-    print("};")
-    print("static const uint8_t groups[] = {")
-    print(",".join(str(g) for g in images.groups))
-    print("};")
     print("static const Sprite sprite_data[] = {")
     for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
@@ -334,14 +332,19 @@ def output(compressed, images):
         print(",")
     print("},")
     output_huffman(compressed.colors.form, compressed.colors.perm)
-    print(",bitstream, variants, limits, groups,{")
-    print(",".join(str(f) for f in images.frames))
-    print("}, %d};" % len(images.groups))
+    print(",bitstream,")
+    output_array("variants", images.variants)
+    output_array("limits", images.limits)
+    output_array("groups", images.groups)
+    output_array("frames", images.frames)
+    print("};")
 
 
 def output_constants(images: Images):
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
         print("#define SHEET_COUNT %d" % len(images.frames), file=f)
+        print("#define GROUP_COUNT %d" % len(images.groups), file=f)
+        print("#define VARIANT_COUNT %d" % len(images.variants), file=f)
 
 
 def main():

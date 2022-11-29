@@ -10,6 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "constants.h"
 #include "types.h"
 
 extern const Sprites sprites;
@@ -76,7 +77,7 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
   const uint8_t *variants = sprites.variants;
   for (size_t id = 0; id < sprites.ids; id++) {
     uint8_t sheet = 0;
-    for (size_t gid = 0; gid < sprites.n_groups; gid++) {
+    for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
       if (id >= sprites.limits[gid])
         continue;
       uint8_t z = 0;

@@ -53,11 +53,10 @@ typedef struct {
   const Lz77Header lz77;
   const HuffmanHeader palettes;
   const uint8_t *bitstream;
-  const uint8_t *variants;
-  const uint16_t *limits;
-  const uint8_t *groups;
+  const uint8_t variants[VARIANT_COUNT];
+  const uint16_t limits[GROUP_COUNT];
+  const uint8_t groups[GROUP_COUNT];
   const uint8_t frames[SHEET_COUNT];
-  const uint8_t n_groups;
 } Sprites;
 
 typedef struct {
