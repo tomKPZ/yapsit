@@ -31,6 +31,10 @@ FRAMES = [1, 2, 2, 1, 1, 2]
 SHINY = [1, 1, 1, 0, 0, 1]
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
+Images = namedtuple(
+    "Images", ["images", "variants", "limits", "groups", "ids", "frames"]
+)
+Compressed = namedtuple("Compressed", ["sizes", "colors", "bitstream", "bitlens", "lz"])
 
 
 def create_palette(sprite, shiny):
@@ -59,7 +63,7 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
 
     n = len(data) + 1
     dp = ffibuilder.new("int[%d][7]" % n, [[0] + [-1] * 6] * n)
-    lib.lz77(*size, data, data2bits, dp)
+    lib.lz77(*size, data, data2bits, dp)  # type: ignore
     ffibuilder.dlclose(lib)
 
     node = 0
@@ -151,7 +155,7 @@ def read_images():
             row = 0
             for i, variant_count in enumerate(variant_counts):
                 # TODO: remove
-                if i > 10 or variant_count > 6:
+                if i > 0 or variant_count > 6:
                     variants[i].append(0)
                     row += variant_count
                     continue
@@ -234,7 +238,7 @@ def read_images():
     images = [x for xs in images.values() for x in xs]
     limits = [v for _, v in sorted(limits.items())]
     groups = [v for _, v in sorted(groups.items())]
-    return images, variants, limits, groups, ids, frames
+    return Images(images, variants, limits, groups, ids, frames)
 
 
 def compress_image(d2bs, input):
@@ -242,7 +246,8 @@ def compress_image(d2bs, input):
     return (size, lz77(uncompressed, size, d2bs))
 
 
-def compress_images(uncompressed, pool):
+def compress_images(uncompressed):
+    pool = Pool()
     palettes = [palette for _, _, palette in uncompressed]
     colors = huffman_encode([c for palette in palettes for c in palette])
 
@@ -276,7 +281,7 @@ def compress_images(uncompressed, pool):
             bitlens.append(len(bitstream))
             bitstreams.extend(bitstream)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000), file=stderr)
-    return sizes, colors, bitstreams, bitlens, lz
+    return Compressed(sizes, colors, bitstreams, bitlens, lz)  # type: ignore
 
 
 def output_bits(bits):
@@ -301,46 +306,48 @@ def output_huffman(form, perm):
     print("}}")
 
 
-def output(
-    sizes, colors, bitstream, bitlens, lz, variants, limits, groups, ids, frames
-):
+def output(compressed, images):
     print('#include "types.h"')
     print("static const uint8_t variants[] = {")
-    print(",".join(str(v) for v in variants))
+    print(",".join(str(v) for v in images.variants))
     print("};")
     print("static const uint16_t limits[] = {")
-    print(",".join(str(l) for l in limits))
+    print(",".join(str(l) for l in images.limits))
     print("};")
     print("static const uint8_t groups[] = {")
-    print(",".join(str(g) for g in groups))
-    print("};")
-    print("static const uint8_t frames[] = {")
-    print(",".join(str(f) for f in frames))
+    print(",".join(str(g) for g in images.groups))
     print("};")
     print("static const Sprite sprite_data[] = {")
-    for (w, h, d), bitlen in zip(sizes, bitlens):
+    for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
     print("};")
     print("static const uint8_t bitstream[] =")
-    output_bits(bitstream)
+    output_bits(compressed.bitstream)
     print(";")
     print("const Sprites sprites = {")
     print("sprite_data,")
-    print("%d," % len(sizes))
-    print("%d," % ids)
+    print("%d," % len(compressed.sizes))
+    print("%d," % images.ids)
     print("{")
-    for field in lz:
+    for field in compressed.lz:
         output_huffman(field.form, field.perm)
         print(",")
     print("},")
-    output_huffman(colors.form, colors.perm)
-    print(",bitstream, variants, limits, groups, frames, %d};" % len(groups))
+    output_huffman(compressed.colors.form, compressed.colors.perm)
+    print(",bitstream, variants, limits, groups,{")
+    print(",".join(str(f) for f in images.frames))
+    print("}, %d};" % len(images.groups))
+
+
+def output_constants(images: Images):
+    with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
+        print("#define SHEET_COUNT %d" % len(images.frames), file=f)
 
 
 def main():
-    pool = Pool()
-    images, variants, limits, groups, ids, frames = read_images()
-    output(*compress_images(images, pool), variants, limits, groups, ids, frames)
+    images = read_images()
+    output(compress_images(images.images), images)
+    output_constants(images)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ set(CMAKE_C_COMPILER "clang")
 add_library(lz77 SHARED lz77.c)
 
 add_custom_command(
-  OUTPUT pokemon.c
+  OUTPUT pokemon.c constants.h
   COMMAND pypy3 gen_header.py > pokemon.c
   DEPENDS gen_header.py lz77)
 
