@@ -68,6 +68,10 @@ static uint8_t huffman_decode(HuffmanContext *context,
   }
 }
 
+static bool in_range(size_t x, const Range *range) {
+  return x + 1 >= range->lo && x + 1 <= range->hi;
+}
+
 static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
                                    size_t *bit_offset, uint8_t *z_out) {
   size_t n = 0;
@@ -75,7 +79,7 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
   size_t offset = 0;
   const Sprite *image = sprites.images;
   const uint8_t *variants = sprites.variants;
-  for (size_t id = 0; id < sprites.ids; id++) {
+  for (size_t id = 0; id < ID_COUNT; id++) {
     uint8_t sheet = 0;
     for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
       if (id >= sprites.limits[gid])
@@ -84,10 +88,8 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
       for (size_t g = 0; g < sprites.groups[gid]; g++) {
         for (size_t v = 0; v < *variants; v++) {
           for (size_t f = 0; f < sprites.frames[sheet]; f++) {
-            if (id + 1 >= args->id_lo && id + 1 <= args->id_hi &&
-                sheet >= args->sheet_lo && sheet <= args->sheet_hi &&
-                v >= args->variants_lo && v <= args->variants_hi &&
-                f >= args->frame_lo && f <= args->frame_hi &&
+            if (in_range(id, &args->id) && in_range(sheet, &args->sheet) &&
+                in_range(v, &args->variants) && in_range(f, &args->frame) &&
                 image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
                 rand() % (++n) == 0) {
               sprite = image;
@@ -277,15 +279,15 @@ static struct argp_option options[] = {
     {0},
 };
 
-static bool parse_range(char *arg, uint16_t *lo, uint16_t *hi) {
+static bool parse_range(char *arg, Range *range) {
   // TODO: Input validation.
   char *upper = strchr(arg, '-');
   if (upper) {
     *upper++ = '\0';
-    *lo = atoi(arg);
-    *hi = atoi(upper);
+    range->lo = atoi(arg);
+    range->hi = atoi(upper);
   } else {
-    *lo = *hi = atoi(arg);
+    range->lo = range->hi = atoi(arg);
   }
   return true;
 }
@@ -294,19 +296,19 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   Arguments *args = state->input;
   switch (key) {
   case 'i':
-    if (!parse_range(arg, &args->id_lo, &args->id_hi))
+    if (!parse_range(arg, &args->id))
       return ARGP_ERR_UNKNOWN;
     break;
   case 's':
-    if (!parse_range(arg, &args->sheet_lo, &args->sheet_hi))
+    if (!parse_range(arg, &args->sheet))
       return ARGP_ERR_UNKNOWN;
     break;
   case 'v':
-    if (!parse_range(arg, &args->variants_lo, &args->variants_hi))
+    if (!parse_range(arg, &args->variants))
       return ARGP_ERR_UNKNOWN;
     break;
   case 'f':
-    if (!parse_range(arg, &args->frame_lo, &args->frame_hi))
+    if (!parse_range(arg, &args->frame))
       return ARGP_ERR_UNKNOWN;
     break;
   case 't':
@@ -323,16 +325,17 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 static struct argp argp = {
     options, parse_opt, 0, "Show a random pokemon sprite.", 0, 0, 0};
 
+static void init_range(Range *range) {
+  range->lo = 0;
+  range->hi = 0xffff;
+}
+
 int main(int argc, char *argv[]) {
   Arguments args;
-  args.id_lo = 0;
-  args.id_hi = 0xffff;
-  args.sheet_lo = 0;
-  args.sheet_hi = 0xffff;
-  args.variants_lo = 0;
-  args.variants_hi = 0xffff;
-  args.frame_lo = 0;
-  args.frame_hi = 0xffff;
+  init_range(&args.id);
+  init_range(&args.sheet);
+  init_range(&args.variants);
+  init_range(&args.frame);
   args.test = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;
@@ -342,7 +345,7 @@ int main(int argc, char *argv[]) {
   if (args.test) {
     const Sprite *images = sprites.images;
     BitstreamContext bitstream = {sprites.bitstream, 0};
-    for (size_t i = 0; i < sprites.count; i++) {
+    for (size_t i = 0; i < SPRITE_COUNT; i++) {
       uint8_t w = images[i].w, h = images[i].h, d = images[i].d;
       uint8_t *image = decompress_image(w, h, d, &bitstream);
       uint8_t palettes[2][16][3];

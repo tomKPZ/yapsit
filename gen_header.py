@@ -320,8 +320,6 @@ def output(compressed, images):
     for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
     print("},")
-    print("%d," % len(compressed.sizes))
-    print("%d," % images.ids)
     print("{")
     for field in compressed.lz:
         output_huffman(field.form, field.perm)
@@ -341,6 +339,7 @@ def output(compressed, images):
         print("#define VARIANT_COUNT %d" % len(images.variants), file=f)
         print("#define BITSTREAM_LEN %d" % bitcount, file=f)
         print("#define SPRITE_COUNT %d" % len(images.images), file=f)
+        print("#define ID_COUNT %d" % images.ids, file=f)
 
 
 def main():

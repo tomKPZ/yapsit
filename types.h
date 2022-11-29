@@ -13,11 +13,11 @@ typedef struct {
 } HuffmanHeader;
 
 typedef struct {
-  const HuffmanHeader dzs;
-  const HuffmanHeader dys;
-  const HuffmanHeader dxs;
-  const HuffmanHeader runlen;
-  const HuffmanHeader values;
+  HuffmanHeader dzs;
+  HuffmanHeader dys;
+  HuffmanHeader dxs;
+  HuffmanHeader runlen;
+  HuffmanHeader values;
 } Lz77Header;
 
 typedef struct {
@@ -48,27 +48,26 @@ typedef struct {
 } Sprite;
 
 typedef struct {
-  const Sprite images[SPRITE_COUNT];
-  const uint16_t count;
-  const uint16_t ids;
-  const Lz77Header lz77;
-  const HuffmanHeader palettes;
-  const uint8_t bitstream[BITSTREAM_LEN];
-  const uint8_t variants[VARIANT_COUNT];
-  const uint16_t limits[GROUP_COUNT];
-  const uint8_t groups[GROUP_COUNT];
-  const uint8_t frames[SHEET_COUNT];
+  Sprite images[SPRITE_COUNT];
+  Lz77Header lz77;
+  HuffmanHeader palettes;
+  uint8_t bitstream[BITSTREAM_LEN];
+  uint8_t variants[VARIANT_COUNT];
+  uint16_t limits[GROUP_COUNT];
+  uint8_t groups[GROUP_COUNT];
+  uint8_t frames[SHEET_COUNT];
 } Sprites;
 
 typedef struct {
-  uint16_t id_lo;
-  uint16_t id_hi;
-  uint16_t sheet_lo;
-  uint16_t sheet_hi;
-  uint16_t variants_lo;
-  uint16_t variants_hi;
-  uint16_t frame_lo;
-  uint16_t frame_hi;
+  uint16_t lo;
+  uint16_t hi;
+} Range;
+
+typedef struct {
+  Range id;
+  Range sheet;
+  Range variants;
+  Range frame;
   bool test;
 } Arguments;
 
