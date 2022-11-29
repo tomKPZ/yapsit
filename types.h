@@ -47,7 +47,7 @@ typedef struct {
 } Sprite;
 
 typedef struct {
-  const Sprite *images;
+  const Sprite images[SPRITE_COUNT];
   const uint16_t count;
   const uint16_t ids;
   const Lz77Header lz77;
