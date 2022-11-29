@@ -13,8 +13,9 @@ static int nbits(const int output[5], const uint8_t data2bits[5][256]) {
 }
 
 static int min(int a, int b) { return a < b ? a : b; }
+static int max(int a, int b) { return a > b ? a : b; }
 
-void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
+void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
           const uint8_t data[], const uint8_t data2bits[5][256], int dp[][7]) {
   int n = depth * width * height;
   for (int i = n; i-- > 0;) {
@@ -28,7 +29,7 @@ void lz77(const uint8_t width, const uint8_t height, const uint8_t depth,
         data[i],
     };
     ans[0] += nbits(&ans[2], data2bits);
-    for (int j = 0; j < i; j++) {
+    for (int j = max(0, i - window); j < i; j++) {
       int upper = min(n - i + j, j + 256);
       for (int k = j; k < upper; k++) {
         if (data[k] != data[k + i - j])

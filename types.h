@@ -43,7 +43,8 @@ typedef struct {
   uint8_t w;
   uint8_t h;
   uint8_t d;
-  uint16_t bitlen;
+  // TODO: try to reduce to uint16_t.
+  uint32_t bitlen;
 } Sprite;
 
 typedef struct {
