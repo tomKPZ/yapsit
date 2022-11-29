@@ -319,9 +319,6 @@ def output(compressed, images):
     for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
     print("};")
-    print("static const uint8_t bitstream[] =")
-    output_bits(compressed.bitstream)
-    print(";")
     print("const Sprites sprites = {")
     print("sprite_data,")
     print("%d," % len(compressed.sizes))
@@ -332,7 +329,9 @@ def output(compressed, images):
         print(",")
     print("},")
     output_huffman(compressed.colors.form, compressed.colors.perm)
-    print(",bitstream,")
+    print(",")
+    output_bits(compressed.bitstream)
+    print(",")
     output_array("variants", images.variants)
     output_array("limits", images.limits)
     output_array("groups", images.groups)
@@ -340,17 +339,20 @@ def output(compressed, images):
     print("};")
 
 
-def output_constants(images: Images):
+def output_constants(compressed: Compressed, images: Images):
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
+        bitcount = (len(compressed.bitstream) + 7) // 8
         print("#define SHEET_COUNT %d" % len(images.frames), file=f)
         print("#define GROUP_COUNT %d" % len(images.groups), file=f)
         print("#define VARIANT_COUNT %d" % len(images.variants), file=f)
+        print("#define BITSTREAM_LEN %d" % bitcount, file=f)
 
 
 def main():
     images = read_images()
-    output(compress_images(images.images), images)
-    output_constants(images)
+    compressed = compress_images(images.images)
+    output(compressed, images)
+    output_constants(compressed, images)
 
 
 if __name__ == "__main__":

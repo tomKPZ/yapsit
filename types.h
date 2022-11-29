@@ -52,7 +52,7 @@ typedef struct {
   const uint16_t ids;
   const Lz77Header lz77;
   const HuffmanHeader palettes;
-  const uint8_t *bitstream;
+  const uint8_t bitstream[BITSTREAM_LEN];
   const uint8_t variants[VARIANT_COUNT];
   const uint16_t limits[GROUP_COUNT];
   const uint8_t groups[GROUP_COUNT];
