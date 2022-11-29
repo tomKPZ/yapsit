@@ -229,8 +229,8 @@ def read_images():
 
 
 def compress_image(d2bs, input):
-    size, uncompressed, _ = input
-    return (size, lz3d(uncompressed, size, d2bs))
+    i, (size, uncompressed, _) = input
+    return (i, size, lz3d(uncompressed, size, d2bs))
 
 
 def compress_images(uncompressed):
@@ -252,8 +252,9 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
     for _ in range(1):
-        sizes, streams = zip(
-            *pool.map(partial(compress_image, d2bs), uncompressed, chunksize=1)
+        perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
+        _, sizes, streams = zip(
+            *sorted(pool.map(partial(compress_image, d2bs), perm, chunksize=1))
         )
         # TODO: repaletteize based on value stream.
 
