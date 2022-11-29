@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "constants.h"
+
 typedef struct {
   uint8_t form[64];
   uint8_t perm[256];
@@ -54,7 +56,7 @@ typedef struct {
   const uint8_t *variants;
   const uint16_t *limits;
   const uint8_t *groups;
-  const uint8_t *frames;
+  const uint8_t frames[SHEET_COUNT];
   const uint8_t n_groups;
 } Sprites;
 
