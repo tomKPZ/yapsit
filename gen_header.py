@@ -247,11 +247,10 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     )
     lib = ffibuilder.dlopen(path.join(SCRIPT_DIR, "liblz77.so"))
 
-    pool = Pool()
-
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
-    for _ in range(1):
+    for _ in range(5):
+        pool = Pool()
         perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
         _, sizes, streams = zip(
             *sorted(pool.map(partial(compress_image, d2bs), perm, chunksize=1))
@@ -265,6 +264,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
                     if x >= 0:
                         all_streams[i].append(x)
         lz = tuple(pool.map(huffman_encode, all_streams, chunksize=1))
+        pool.close()
 
         d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
         bitstreams = []
