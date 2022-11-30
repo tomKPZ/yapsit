@@ -273,17 +273,28 @@ static struct argp_option options[] = {
     {0},
 };
 
-static bool parse_range(char *arg, Range *range) {
-  // TODO: Input validation.
-  char *upper = strchr(arg, '-');
-  if (upper) {
-    *upper++ = '\0';
-    range->lo = atoi(arg) - 1;
-    range->hi = atoi(upper) - 1;
-  } else {
-    range->lo = range->hi = atoi(arg) - 1;
+static bool parse_u16(const char *s, uint16_t *i) {
+  unsigned long len = strlen(s);
+  if (len <= 0 || len > 5)
+    return false;
+  for (const char *t = s; *t; t++) {
+    if (*t < '0' || *t > '9')
+      return false;
   }
+  int j = atoi(s);
+  if (j <= 0 || j > 65536)
+    return false;
+  *i = j - 1;
   return true;
+}
+
+static bool parse_range(char *arg, Range *range) {
+  char *upper = strchr(arg, '-');
+  if (upper)
+    *upper++ = '\0';
+  else
+    upper = arg;
+  return parse_u16(arg, &range->lo) && parse_u16(upper, &range->hi);
 }
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
@@ -291,19 +302,19 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   switch (key) {
   case 'i':
     if (!parse_range(arg, &args->id))
-      return ARGP_ERR_UNKNOWN;
+      return ERANGE;
     break;
   case 's':
     if (!parse_range(arg, &args->sheet))
-      return ARGP_ERR_UNKNOWN;
+      return ERANGE;
     break;
   case 'v':
     if (!parse_range(arg, &args->variants))
-      return ARGP_ERR_UNKNOWN;
+      return ERANGE;
     break;
   case 'f':
     if (!parse_range(arg, &args->frame))
-      return ARGP_ERR_UNKNOWN;
+      return ERANGE;
     break;
   case 't':
     args->test = true;
