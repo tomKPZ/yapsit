@@ -214,9 +214,7 @@ def read_images():
                 p += [((0, 0, 0), (0, 0, 0))] * (16 - len(p))
                 for key, c in palette.items():
                     p[inv[c]] = key
-                palettes.extend(
-                    x for pair in p[1 : max(image) + 1] for c in pair for x in c
-                )
+                palettes.append((p, list(set(image) - {-1})))
             size = (xh - xl + 1, yh - yl + 1, n)
             images.append((size, image_stream, palettes))
     ids = max(limits)
@@ -227,12 +225,13 @@ def read_images():
 
 def compress_image(d2bs, input):
     i, (size, uncompressed, _) = input
-    return (i, size, lz3d(uncompressed, size, d2bs))
+    return i, lz3d(uncompressed, size, d2bs)
 
 
 def compress_images(uncompressed):
-    palettes = [palette for _, _, palette in uncompressed]
-    colors = huffman_encode([c for palette in palettes for c in palette])
+    sizes = [size for size, _, _ in uncompressed]
+    images = [image for _, image, _ in uncompressed]
+    palettess = [palettes for _, _, palettes in uncompressed]
 
     global ffibuilder, lib
     ffibuilder = FFI()
@@ -249,10 +248,29 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     for _ in range(5):
         pool = Pool()
         perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
-        _, sizes, streams = zip(
+        _, streams = zip(
             *sorted(pool.map(partial(compress_image, d2bs), perm, chunksize=1))
         )
-        # TODO: repaletteize based on value stream.
+
+        # Repaletteize based on value stream.
+        for palettes, stream, image in zip(palettess, streams, images):
+            counter = Counter(s[-1] for s in stream)
+            counter[0] = len(stream)
+            del counter[-1]
+            perm = sorted(counter.keys(), key=lambda key: -counter[key])
+            while len(perm) < 16:
+                perm.append(len(perm))
+            inv = dict(zip(perm, range(16)))
+            for i, (p, c) in enumerate(palettes):
+                palettes[i] = [p[j] for j in inv], [inv[v] for v in c]
+            for l in stream:
+                l[-1] = inv.get(l[-1], -1)
+            image[:] = [inv[v] for v in image]
+        palettes = [
+            [x for p, m in ps for pair in p[1 : max(m) + 1] for c in pair for x in c]
+            for ps in palettess
+        ]
+        colors = huffman_encode([c for palette in palettes for c in palette])
 
         all_streams = [[] for _ in range(LZ77_LEN)]
         for stream in streams:
