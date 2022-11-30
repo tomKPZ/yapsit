@@ -68,42 +68,36 @@ static uint8_t huffman_decode(HuffmanContext *context,
   }
 }
 
-static bool in_range(size_t x, const Range *range) {
-  return x + 1 >= range->lo && x + 1 <= range->hi;
+static inline bool in_range(size_t x, const Range *range) {
+  return x >= range->lo && x <= range->hi;
 }
 
 static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
-                                   size_t *bit_offset, uint8_t *z_out) {
+                                   size_t *offset_out, uint8_t *z_out) {
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offset = 0;
   const Sprite *image = sprites.images;
   const uint8_t *variants = sprites.variants;
-  for (size_t id = 0; id < ID_COUNT; id++) {
-    uint8_t sheet = 0;
-    for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
-      if (id >= sprites.limits[gid])
-        continue;
-      uint8_t z = 0;
-      for (size_t g = 0; g < sprites.groups[gid]; g++) {
+  uint8_t sheet = 0;
+  for (size_t gid = 0; gid < GROUP_COUNT; sheet += sprites.groups[gid], gid++) {
+    for (size_t id = 0; id < sprites.limits[gid];
+         id++, offset += image->bitlen, image++) {
+      for (size_t g = 0, z = 0, s = sheet; g < sprites.groups[gid];
+           g++, variants++, s++) {
         for (size_t v = 0; v < *variants; v++) {
-          for (size_t f = 0; f < sprites.frames[sheet]; f++) {
-            if (in_range(id, &args->id) && in_range(sheet, &args->sheet) &&
+          for (size_t f = 0; f < sprites.frames[s]; f++, z++) {
+            if (in_range(id, &args->id) && in_range(s, &args->sheet) &&
                 in_range(v, &args->variants) && in_range(f, &args->frame) &&
                 image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
                 rand() % (++n) == 0) {
               sprite = image;
-              *bit_offset = offset;
+              *offset_out = offset;
               *z_out = z;
             }
-            z++;
           }
         }
-        variants++;
-        sheet++;
       }
-      offset += image->bitlen;
-      image++;
     }
   }
   return sprite;
@@ -284,10 +278,10 @@ static bool parse_range(char *arg, Range *range) {
   char *upper = strchr(arg, '-');
   if (upper) {
     *upper++ = '\0';
-    range->lo = atoi(arg);
-    range->hi = atoi(upper);
+    range->lo = atoi(arg) - 1;
+    range->hi = atoi(upper) - 1;
   } else {
-    range->lo = range->hi = atoi(arg);
+    range->lo = range->hi = atoi(arg) - 1;
   }
   return true;
 }

@@ -101,22 +101,21 @@ def huffman_encode(data):
     dfs(nodes[-1])
 
     total = sum(counter.values())
-    if total:
-        shannon = total * log2(total)
-        bitlen = 0
-        for x, count in counter.items():
-            shannon -= count * log2(count)
-            bitlen += count * len(data2bits[x])
-        print(
-            "%d/%d (+%.1fB) (+%.2f%%)"
-            % (
-                bitlen,
-                ceil(shannon),
-                (bitlen - shannon) / 8,
-                100 * (bitlen / shannon - 1),
-            ),
-            file=stderr,
-        )
+    shannon = total * log2(total)
+    bitlen = 0
+    for x, count in counter.items():
+        shannon -= count * log2(count)
+        bitlen += count * len(data2bits[x])
+    print(
+        "%d/%d (+%.1fB) (+%.2f%%)"
+        % (
+            bitlen,
+            ceil(shannon),
+            (bitlen - shannon) / 8,
+            100 * (bitlen / shannon - 1),
+        ),
+        file=stderr,
+    )
     return Huffman(form, perm, data2bits)
 
 
@@ -128,16 +127,15 @@ def pixel(montage, x, y):
 def read_images():
     cmm = {(i, j): 0 for i in range(16) for j in range(16)}
     metadata = load(open(path.join(ASSETS_DIR, "metadata.json")))
-    images = defaultdict(list)
-    variants = defaultdict(list)
-    limits = defaultdict(int)
-    groups = defaultdict(int)
+    images = []
+    variants = []
+    limits = defaultdict(int)  # TODO: make this a list
+    groups = defaultdict(int)  # TODO: make this a list
     frames = []
     for gid, ((w, h), group) in enumerate(metadata):
         spritess = defaultdict(list)
-        for name, variants_id, variant_counts in group:
-            if name not in MONTAGES:
-                continue
+        variantss = defaultdict(list)  # TODO: simplify
+        for name, variants_id, variant_counts in [g for g in group if g[0] in MONTAGES]:
             limits[gid] = len(variant_counts)
             groups[gid] += 1
             frames.append(FRAMES[variants_id])
@@ -146,7 +144,7 @@ def read_images():
             )
             row = 0
             for i, variant_count in enumerate(variant_counts):
-                variants[i].append(variant_count)
+                variantss[i].append(variant_count)
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
@@ -167,7 +165,8 @@ def read_images():
                         spritess[i].append((sprite, palette))
 
                     row += 1
-        for id, sprites in spritess.items():
+        variants.extend(sum((v for _, v in sorted(variantss.items())), start=[]))
+        for sprites in spritess.values():
             xl = yl = 255
             xh = yh = 0
             for sprite, _ in sprites:
@@ -219,10 +218,8 @@ def read_images():
                     x for pair in p[1 : max(image) + 1] for c in pair for x in c
                 )
             size = (xh - xl + 1, yh - yl + 1, n)
-            images[id].append((size, image_stream, palettes))
-    variants = sum((v for _, v in sorted(variants.items())), start=[])
-    ids = len(images)
-    images = [x for xs in images.values() for x in xs]
+            images.append((size, image_stream, palettes))
+    ids = max(limits)
     limits = [v for _, v in sorted(limits.items())]
     groups = [v for _, v in sorted(groups.items())]
     return Images(images, variants, limits, groups, ids, frames)
