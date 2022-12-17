@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from collections import Counter, defaultdict, namedtuple
+from collections import Counter, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
 from json import load
@@ -124,27 +124,31 @@ def pixel(montage, x, y):
     return (r // 8, g // 8, b // 8) if a else (-1, -1, -1)
 
 
+def get_metadata():
+    metadata = [
+        (size, [g for g in group if g[0] in MONTAGES])
+        for size, group in load(open(path.join(ASSETS_DIR, "metadata.json")))
+    ]
+    return [(size, group) for size, group in metadata if group]
+
+
 def read_images():
     cmm = {(i, j): 0 for i in range(16) for j in range(16)}
-    metadata = load(open(path.join(ASSETS_DIR, "metadata.json")))
     images = []
     variants = []
-    limits = defaultdict(int)  # TODO: make this a list
-    groups = defaultdict(int)  # TODO: make this a list
     frames = []
-    for gid, ((w, h), group) in enumerate(metadata):
-        spritess = defaultdict(list)
-        variantss = defaultdict(list)  # TODO: simplify
-        for name, variants_id, variant_counts in [g for g in group if g[0] in MONTAGES]:
-            limits[gid] = len(variant_counts)
-            groups[gid] += 1
+    metadata = get_metadata()
+    for (w, h), group in metadata:
+        spritess = []
+        for name, variants_id, variant_counts in group:
             frames.append(FRAMES[variants_id])
             montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert(
                 "RGBA"
             )
             row = 0
-            for i, variant_count in enumerate(variant_counts):
-                variantss[i].append(variant_count)
+            spritess.append([])
+            variants.extend(variant_counts)
+            for variant_count in variant_counts:
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
@@ -162,11 +166,10 @@ def read_images():
 
                         palette = create_palette(data, shiny)
                         sprite = [palette[colors] for colors in zip(data, shiny)]
-                        spritess[i].append((sprite, palette))
+                        spritess[-1].append((sprite, palette))
 
                     row += 1
-        variants.extend(sum((v for _, v in sorted(variantss.items())), start=[]))
-        for sprites in spritess.values():
+        for sprites in zip(*spritess):
             xl = yl = 255
             xh = yh = 0
             for sprite, _ in sprites:
@@ -217,9 +220,9 @@ def read_images():
                 palettes.append((p, list(set(image) - {-1})))
             size = (xh - xl + 1, yh - yl + 1, n)
             images.append((size, image_stream, palettes))
+    limits = [len(group[0]) for _, group in metadata]
+    groups = [len(group) for _, group in metadata]
     ids = max(limits)
-    limits = [v for _, v in sorted(limits.items())]
-    groups = [v for _, v in sorted(groups.items())]
     return Images(images, variants, limits, groups, ids, frames)
 
 
