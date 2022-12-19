@@ -67,7 +67,7 @@ def lz3d(data, size, data2bits):
 
 def huffman_encode(data):
     counter = Counter(data)
-    heap = [(counter[i], i) for i in range(256)]
+    heap = list(zip(counter.values(), counter.keys()))
     heapify(heap)
     nodes: list[tuple[int, int, int]] = [(i, -1, -1) for i in range(256)]
     while len(heap) > 1:
@@ -81,7 +81,6 @@ def huffman_encode(data):
     form = []
     perm = []
 
-    # TODO: only output non-zero counted values
     def dfs(node: tuple[int, int, int]):
         val = node[0]
         if val >= 0:
@@ -99,8 +98,14 @@ def huffman_encode(data):
         acc.pop()
 
     dfs(nodes[-1])
+    huffman_info(counter, data2bits)
+    return Huffman(form, perm, data2bits)
 
+
+def huffman_info(counter, data2bits):
     total = sum(counter.values())
+    if not total:
+        return
     shannon = total * log2(total)
     bitlen = 0
     for x, count in counter.items():
@@ -116,7 +121,6 @@ def huffman_encode(data):
         ),
         file=stderr,
     )
-    return Huffman(form, perm, data2bits)
 
 
 def pixel(montage, x, y):
@@ -284,7 +288,9 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         lz = tuple(pool.map(huffman_encode, all_streams, chunksize=1))
         pool.close()
 
-        d2bs = [[len(huffman.data2bits[d]) for d in range(256)] for huffman in lz]
+        d2bs = [
+            [len(huffman.data2bits.get(d, [])) for d in range(256)] for huffman in lz
+        ]
         bitstreams = []
         bitlens = []
         for stream, palette in zip(streams, palettes):
@@ -315,6 +321,7 @@ def output_bits(bits):
     print("},")
 
 
+# TODO: Move huffman headers to bitstream.
 def output_huffman(form, perm):
     print("{")
     output_bits(list(form))
