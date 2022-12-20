@@ -224,7 +224,7 @@ def read_images():
                 palettes.append((p, list(set(image) - {-1})))
             size = (xh - xl + 1, yh - yl + 1, n)
             images.append((size, image_stream, palettes))
-    limits = [len(group[0]) for _, group in metadata]
+    limits = [len(group[0][2]) for _, group in metadata]
     groups = [len(group) for _, group in metadata]
     ids = max(limits)
     return Images(images, variants, limits, groups, ids, frames)
