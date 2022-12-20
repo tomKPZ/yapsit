@@ -29,32 +29,45 @@ static bool read_bit(BitstreamContext *bitstream) {
   return !!bit;
 }
 
+static uint8_t read_int(BitstreamContext *bitstream, size_t length) {
+  uint8_t v = 0;
+  for (size_t i = 0; i < length; i++)
+    v = 2 * v + read_bit(bitstream);
+  return v;
+}
+
 static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
-                           uint8_t i, const uint8_t **perm,
-                           HuffmanBranch *parent) {
-  if (read_bit(bits)) {
-    parent->is_leaf = true;
-    parent->value = **perm;
-    (*perm)++;
+                           uint8_t i, size_t *j, HuffmanBranch *parent) {
+  parent->is_leaf = read_bit(bits);
+  if (parent->is_leaf) {
+    // TODO: interlace form and perm to avoid shuffling.
+    parent->value = (*j)++;
     return 0;
   }
-  parent->is_leaf = false;
   parent->value = i;
-  uint8_t l = decode_node(bits, nodes, i + 1, perm, &nodes[i].l);
-  uint8_t r = decode_node(bits, nodes, i + 1 + l, perm, &nodes[i].r);
+  uint8_t l = decode_node(bits, nodes, i + 1, j, &nodes[i].l);
+  uint8_t r = decode_node(bits, nodes, i + 1 + l, j, &nodes[i].r);
   return l + r + 1;
 }
 
-static void huffman_init(HuffmanContext *context, const HuffmanHeader *header) {
-  BitstreamContext bitstream = {header->form, 0};
-  const uint8_t *perm = header->perm;
+static void huffman_init(HuffmanContext *context, BitstreamContext *bitstream) {
   HuffmanBranch dummy;
-  decode_node(&bitstream, context->nodes, 0, &perm, &dummy);
+  size_t perm_len = 0;
+  decode_node(bitstream, context->nodes, 0, &perm_len, &dummy);
+  uint8_t perm[256];
+  for (size_t i = 0; i < perm_len; i++)
+    perm[i] = read_int(bitstream, 8);
+  for (HuffmanBranch *branch = &context->nodes[0].l; perm_len; branch++) {
+    if (branch->is_leaf) {
+      branch->value = perm[branch->value];
+      perm_len--;
+    }
+  }
 }
 
-static uint8_t huffman_decode(HuffmanContext *context,
+static uint8_t huffman_decode(const HuffmanContext *context,
                               BitstreamContext *bitstream) {
-  HuffmanNode *node = context->nodes;
+  const HuffmanNode *node = context->nodes;
   while (true) {
     if (read_bit(bitstream)) {
       if (node->r.is_leaf)
@@ -126,14 +139,11 @@ static void choose_palette(BitstreamContext *bitstream,
 }
 
 static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
-                                 BitstreamContext *bitstream) {
+                                 BitstreamContext *bitstream,
+                                 const HuffmanContext contexts[5]) {
   size_t size = w * h * d;
   uint8_t *buf = checked_malloc(size);
   uint8_t *image = buf;
-  HuffmanContext contexts[5];
-  const HuffmanHeader *headers = &sprites.lz77.dzs;
-  for (size_t i = 0; i < sizeof(contexts) / sizeof(contexts[0]); i++)
-    huffman_init(&contexts[i], &headers[i]);
   while (buf < image + size) {
     size_t offset = buf - image;
     uint8_t z = offset / (w * h);
@@ -345,14 +355,18 @@ int main(int argc, char *argv[]) {
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;
 
+  BitstreamContext bitstream = {sprites.bitstream, 0};
   HuffmanContext color_context;
-  huffman_init(&color_context, &sprites.palettes);
+  huffman_init(&color_context, &bitstream);
+  HuffmanContext contexts[5];
+  for (size_t i = 0; i < sizeof(contexts) / sizeof(contexts[0]); i++)
+    huffman_init(&contexts[i], &bitstream);
+
   if (args.test) {
     const Sprite *images = sprites.images;
-    BitstreamContext bitstream = {sprites.bitstream, 0};
     for (size_t i = 0; i < SPRITE_COUNT; i++) {
       uint8_t w = images[i].w, h = images[i].h, d = images[i].d;
-      uint8_t *image = decompress_image(w, h, d, &bitstream);
+      uint8_t *image = decompress_image(w, h, d, &bitstream, contexts);
       uint8_t palettes[2][16][3];
       for (size_t z = 0; z < d; z++) {
         uint8_t *frame = image + w * h * z;
@@ -376,9 +390,9 @@ int main(int argc, char *argv[]) {
     if (sprite == NULL)
       return 1;
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
-    BitstreamContext bitstream = {sprites.bitstream, offset};
+    bitstream.offset += offset;
 
-    uint8_t *image = decompress_image(w, h, d, &bitstream);
+    uint8_t *image = decompress_image(w, h, d, &bitstream, contexts);
 
     uint8_t palette[16][3];
     for (size_t p = 0; p <= z; p++) {
