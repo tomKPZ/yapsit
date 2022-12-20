@@ -142,14 +142,16 @@ def read_images():
     frames = []
     metadata = get_metadata()
     for (w, h), group in metadata:
+        # TODO: simplify
         spritess = defaultdict(list)
+        variantss = defaultdict(list)
         for name, variants_id, variant_counts in group:
             frames.append(FRAMES[variants_id])
             filename = path.join(ASSETS_DIR, name + ".png")
             montage = PIL.Image.open(filename).convert("RGBA")
             row = 0
-            variants.extend(variant_counts)
             for i, variant_count in enumerate(variant_counts):
+                variantss[i].append(variant_count)
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
@@ -170,6 +172,7 @@ def read_images():
                         spritess[i].append((sprite, palette))
 
                     row += 1
+        variants.extend(sum(variantss.values(), start=[]))
         for sprites in spritess.values():
             xl = yl = 255
             xh = yh = 0
