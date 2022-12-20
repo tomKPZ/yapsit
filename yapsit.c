@@ -5,8 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/auxv.h>
-#include <sys/ioctl.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -85,14 +83,16 @@ static inline bool in_range(size_t x, const Range *range) {
   return x >= range->lo && x <= range->hi;
 }
 
-static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
-                                   size_t *offset_out, uint8_t *z_out) {
+static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
+                                   uint8_t *z_out) {
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offset = 0;
   const Sprite *image = sprites.images;
   const uint8_t *variants = sprites.variants;
   uint8_t sheet = 0;
+  // TODO: Speedup.
+  // TODO: Uniform selection.
   for (size_t gid = 0; gid < GROUP_COUNT; sheet += sprites.groups[gid], gid++) {
     for (size_t id = 0; id < sprites.limits[gid];
          id++, offset += image->bitlen, image++) {
@@ -102,8 +102,8 @@ static const Sprite *choose_sprite(const Arguments *args, int max_w, int max_h,
           for (size_t f = 0; f < sprites.frames[s]; f++, z++) {
             if (in_range(id, &args->id) && in_range(s, &args->sheet) &&
                 in_range(v, &args->variants) && in_range(f, &args->frame) &&
-                image->w <= max_w && (image->h + 1) / 2 + 2 <= max_h &&
-                rand() % (++n) == 0) {
+                in_range(image->w - 1, &args->width) &&
+                in_range(image->h - 1, &args->height) && rand() % (++n) == 0) {
               sprite = image;
               *offset_out = offset;
               *z_out = z;
@@ -279,6 +279,8 @@ static struct argp_option options[] = {
     {"sheet", 's', "SID[-SID]", 0, "Filter by sprite sheet", 0},
     {"variants", 'v', "VID[-VID]", 0, "Filter by variant ID", 0},
     {"frame", 'f', "FID[-FID]", 0, "Filter by frame number", 0},
+    {"width", 'w', "W[-MAX]", 0, "Filter by sprite width", 0},
+    {"height", 'h', "H[-MAX]", 0, "Filter by sprite height", 0},
     {"test", 't', 0, 0, "Output all sprites", 1},
     {0},
 };
@@ -326,6 +328,14 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     if (!parse_range(arg, &args->frame))
       return ERANGE;
     break;
+  case 'w':
+    if (!parse_range(arg, &args->width))
+      return ERANGE;
+    break;
+  case 'h':
+    if (!parse_range(arg, &args->height))
+      return ERANGE;
+    break;
   case 't':
     args->test = true;
     break;
@@ -351,6 +361,8 @@ int main(int argc, char *argv[]) {
   init_range(&args.sheet);
   init_range(&args.variants);
   init_range(&args.frame);
+  init_range(&args.width);
+  init_range(&args.height);
   args.test = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args))
     return 1;
@@ -380,14 +392,9 @@ int main(int argc, char *argv[]) {
   } else {
     srand(time(NULL) ^ getpid());
 
-    // TODO: Replace this with command line args.
-    struct winsize term_size;
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
-
     size_t offset;
     uint8_t z;
-    const Sprite *sprite =
-        choose_sprite(&args, term_size.ws_col, term_size.ws_row, &offset, &z);
+    const Sprite *sprite = choose_sprite(&args, &offset, &z);
     if (sprite == NULL)
       return 1;
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;

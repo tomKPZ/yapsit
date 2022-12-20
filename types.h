@@ -54,6 +54,8 @@ typedef struct {
   Range sheet;
   Range variants;
   Range frame;
+  Range width;
+  Range height;
   bool test;
 } Arguments;
 
