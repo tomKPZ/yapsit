@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from collections import Counter, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
 from json import load
@@ -137,22 +137,19 @@ def get_metadata():
 
 
 def read_images():
-    cmm = {(i, j): 0 for i in range(16) for j in range(16)}
     images = []
     variants = []
     frames = []
     metadata = get_metadata()
     for (w, h), group in metadata:
-        spritess = []
+        spritess = defaultdict(list)
         for name, variants_id, variant_counts in group:
             frames.append(FRAMES[variants_id])
-            montage = PIL.Image.open(path.join(ASSETS_DIR, name + ".png")).convert(
-                "RGBA"
-            )
+            filename = path.join(ASSETS_DIR, name + ".png")
+            montage = PIL.Image.open(filename).convert("RGBA")
             row = 0
-            spritess.append([])
             variants.extend(variant_counts)
-            for variant_count in variant_counts:
+            for i, variant_count in enumerate(variant_counts):
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
@@ -170,10 +167,10 @@ def read_images():
 
                         palette = create_palette(data, shiny)
                         sprite = [palette[colors] for colors in zip(data, shiny)]
-                        spritess[-1].append((sprite, palette))
+                        spritess[i].append((sprite, palette))
 
                     row += 1
-        for sprites in zip(*spritess):
+        for sprites in spritess.values():
             xl = yl = 255
             xh = yh = 0
             for sprite, _ in sprites:
@@ -195,7 +192,8 @@ def read_images():
             for i in range(n):
                 for j in range(i + 1, n):
                     for (c1, c2), count in (
-                        cmm | Counter(zip(sprites[i][0], sprites[j][0]))
+                        {(i, j): 0 for i in range(16) for j in range(16)}
+                        | Counter(zip(sprites[i][0], sprites[j][0]))
                     ).items():
                         edges.append((-count, i, j, c1, c2))
             edges.sort()
