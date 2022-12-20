@@ -380,6 +380,7 @@ int main(int argc, char *argv[]) {
   } else {
     srand(time(NULL) ^ getpid());
 
+    // TODO: Replace this with command line args.
     struct winsize term_size;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &term_size);
 
