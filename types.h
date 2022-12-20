@@ -8,19 +8,6 @@
 #include "constants.h"
 
 typedef struct {
-  uint8_t form[64];
-  uint8_t perm[256];
-} HuffmanHeader;
-
-typedef struct {
-  HuffmanHeader dzs;
-  HuffmanHeader dys;
-  HuffmanHeader dxs;
-  HuffmanHeader runlen;
-  HuffmanHeader values;
-} Lz77Header;
-
-typedef struct {
   bool is_leaf;
   uint8_t value;
 } HuffmanBranch;
@@ -42,6 +29,7 @@ typedef struct {
 typedef struct {
   uint8_t w;
   uint8_t h;
+  // TODO: this can be removed
   uint8_t d;
   // TODO: try to reduce to uint16_t.
   uint32_t bitlen;
@@ -49,8 +37,6 @@ typedef struct {
 
 typedef struct {
   Sprite images[SPRITE_COUNT];
-  Lz77Header lz77;
-  HuffmanHeader palettes;
   uint8_t bitstream[BITSTREAM_LEN];
   uint8_t variants[VARIANT_COUNT];
   uint16_t limits[GROUP_COUNT];

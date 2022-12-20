@@ -288,8 +288,10 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         lz = tuple(pool.map(huffman_encode, all_streams, chunksize=1))
         pool.close()
 
+        max_bits = [0] * 255
         d2bs = [
-            [len(huffman.data2bits.get(d, [])) for d in range(256)] for huffman in lz
+            [len(huffman.data2bits.get(d, max_bits)) for d in range(256)]
+            for huffman in lz
         ]
         bitstreams = []
         bitlens = []
@@ -308,6 +310,15 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     return Compressed(sizes, colors, bitstreams, bitlens, lz)  # type: ignore
 
 
+def huffman_bits(form, perm):
+    bits = list(form)
+    for x in perm:
+        # TODO: minimize bit length
+        for i in reversed(range(8)):
+            bits.append((x & (1 << i)) >> i)
+    return bits
+
+
 def output_bits(bits):
     while len(bits) % 8 != 0:
         bits.append(0)
@@ -319,16 +330,7 @@ def output_bits(bits):
             encoded += bit
         print("0x%02X," % encoded, end="")
     print("},")
-
-
-# TODO: Move huffman headers to bitstream.
-def output_huffman(form, perm):
-    print("{")
-    output_bits(list(form))
-    print("{")
-    for x in perm:
-        print("0x%02X," % x, end="")
-    print("}},")
+    return len(bits) // 8
 
 
 def output_array(name, arr):
@@ -345,12 +347,10 @@ def output(compressed, images):
     for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
         print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
     print("},")
-    print("{")
+    bitstream = huffman_bits(compressed.colors.form, compressed.colors.perm)
     for field in compressed.lz:
-        output_huffman(field.form, field.perm)
-    print("},")
-    output_huffman(compressed.colors.form, compressed.colors.perm)
-    output_bits(compressed.bitstream)
+        bitstream += huffman_bits(field.form, field.perm)
+    bytecount = output_bits(bitstream + compressed.bitstream)
     output_array("variants", images.variants)
     output_array("limits", images.limits)
     output_array("groups", images.groups)
@@ -358,11 +358,10 @@ def output(compressed, images):
     print("};")
 
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
-        bitcount = (len(compressed.bitstream) + 7) // 8
         print("#define SHEET_COUNT %d" % len(images.frames), file=f)
         print("#define GROUP_COUNT %d" % len(images.groups), file=f)
         print("#define VARIANT_COUNT %d" % len(images.variants), file=f)
-        print("#define BITSTREAM_LEN %d" % bitcount, file=f)
+        print("#define BITSTREAM_LEN %d" % bytecount, file=f)
         print("#define SPRITE_COUNT %d" % len(images.images), file=f)
         print("#define ID_COUNT %d" % images.ids, file=f)
 
