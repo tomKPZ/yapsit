@@ -12,16 +12,11 @@
 #include "constants.h"
 #include "types.h"
 
-#define DRAW_BUFFER 50000
+#define DRAW_BUFFER 44294
+// TODO: Move this to gen_header.py
+#define DECODE_BUFFER 665280
 
 extern const Sprites sprites;
-
-static void *checked_malloc(size_t size) {
-  void *mem = malloc(size);
-  if (!mem)
-    exit(1);
-  return mem;
-}
 
 static bool read_bit(BitstreamContext *bitstream) {
   uint8_t byte = bitstream->bits[bitstream->offset / 8];
@@ -155,11 +150,11 @@ static void choose_palette(BitstreamContext *bitstream,
   memcpy(palette, palettes[rand() % 16 == 0], sizeof(palettes[0]));
 }
 
-static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
-                                 BitstreamContext *bitstream,
-                                 const HuffmanContext contexts[5]) {
+static void decompress_image(uint8_t *buf, uint8_t w, uint8_t h, uint8_t d,
+                             BitstreamContext *bitstream,
+                             const HuffmanContext contexts[5]) {
   size_t size = w * h * d;
-  uint8_t *buf = checked_malloc(size);
+  assert(size <= DECODE_BUFFER);
   uint8_t *image = buf;
   while (buf < image + size) {
     size_t offset = buf - image;
@@ -183,7 +178,6 @@ static uint8_t *decompress_image(uint8_t w, uint8_t h, uint8_t d,
     if (buf < image + size)
       *(buf++) = huffman_decode(&contexts[4], bitstream);
   }
-  return image;
 }
 
 static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
@@ -251,7 +245,7 @@ static void reset() {
 static void draw(uint8_t w, uint8_t h, const uint8_t *image,
                  const uint8_t palette[16][3]) {
   char buf[DRAW_BUFFER];
-  char *out = buf;
+  out = buf;
   for (size_t y = 0; y < h; y += 2) {
     for (size_t x = 0; x < w; x++) {
       uint8_t u = image[y * w + x];
@@ -291,7 +285,7 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
   puts(buf);
 }
 
-// TODO: use getopt instead.
+// TODO: use getopt instead to support musl.
 static struct argp_option options[] = {
     {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
     {"sheet", 's', "SID[-SID]", 0, "Filter by sprite sheet", 0},
@@ -391,12 +385,13 @@ int main(int argc, char *argv[]) {
   HuffmanContext contexts[5];
   for (size_t i = 0; i < sizeof(contexts) / sizeof(contexts[0]); i++)
     huffman_init(&contexts[i], &bitstream);
+  uint8_t image[DECODE_BUFFER];
 
   if (args.test) {
     const Sprite *images = sprites.images;
     for (size_t i = 0; i < SPRITE_COUNT; i++) {
       uint8_t w = images[i].w, h = images[i].h, d = images[i].d;
-      uint8_t *image = decompress_image(w, h, d, &bitstream, contexts);
+      decompress_image(image, w, h, d, &bitstream, contexts);
       uint8_t palettes[2][16][3];
       for (size_t z = 0; z < d; z++) {
         uint8_t *frame = image + w * h * z;
@@ -405,7 +400,6 @@ int main(int argc, char *argv[]) {
         for (int j = 0; j < 2; j++)
           draw(w, h, frame, palettes[j]);
       }
-      free(image);
     }
   } else {
     srand(time(NULL) ^ getpid());
@@ -418,7 +412,7 @@ int main(int argc, char *argv[]) {
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
     bitstream.offset += offset;
 
-    uint8_t *image = decompress_image(w, h, d, &bitstream, contexts);
+    decompress_image(image, w, h, d, &bitstream, contexts);
 
     uint8_t palette[16][3];
     for (size_t p = 0; p <= z; p++) {
@@ -427,7 +421,6 @@ int main(int argc, char *argv[]) {
     }
 
     draw(w, h, image + w * h * z, palette);
-    free(image);
   }
 
   return 0;
