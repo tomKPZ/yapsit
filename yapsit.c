@@ -91,30 +91,43 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
   size_t offset = 0;
   const Sprite *image = sprites.images;
   const uint8_t *variants = sprites.variants;
-  uint8_t sheet = 0;
-  // TODO: Speedup.
-  // TODO: Uniform selection.
-  for (size_t gid = 0; gid < GROUP_COUNT; sheet += sprites.groups[gid], gid++) {
+  size_t sprite_gid;
+  const uint8_t *sprite_variants;
+  for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
     for (size_t id = 0; id < sprites.limits[gid];
          id++, offset += image->bitlen, image++) {
-      for (size_t g = 0, z = 0, s = sheet; g < sprites.groups[gid];
-           g++, variants++, s++) {
-        for (size_t v = 0; v < *variants; v++) {
-          for (size_t f = 0; f < sprites.frames[s]; f++, z++) {
-            if (in_range(id, &args->id) && in_range(s, &args->sheet) &&
-                in_range(v, &args->variants) && in_range(f, &args->frame) &&
-                in_range(image->w - 1, &args->width) &&
-                in_range(image->h - 1, &args->height) && rand() % (++n) == 0) {
-              sprite = image;
-              *offset_out = offset;
-              *z_out = z;
-            }
-          }
+      // TODO: Verify sheet, variants, frame if possible.
+      if (in_range(id, &args->id) && in_range(image->w - 1, &args->width) &&
+          in_range(image->h - 1, &args->height) && rand() % ++n == 0) {
+        sprite = image;
+        *offset_out = offset;
+        sprite_gid = gid;
+        sprite_variants = variants;
+      }
+      variants += sprites.groups[gid];
+    }
+  }
+  if (!sprite)
+    return NULL;
+
+  n = 0;
+  uint8_t sheet = 0;
+  for (size_t g = 0; g < sprite_gid; g++)
+    sheet += sprites.groups[g];
+  image = NULL;
+  for (size_t g = 0, z = 0, s = sheet; g < sprites.groups[sprite_gid];
+       g++, sprite_variants++, s++) {
+    for (size_t v = 0; v < *sprite_variants; v++) {
+      for (size_t f = 0; f < sprites.frames[s]; f++, z++) {
+        if (in_range(s, &args->sheet) && in_range(v, &args->variants) &&
+            in_range(f, &args->frame) && rand() % ++n == 0) {
+          *z_out = z;
+          image = sprite;
         }
       }
     }
   }
-  return sprite;
+  return image;
 }
 
 static void decompress_palette(BitstreamContext *bitstream,
