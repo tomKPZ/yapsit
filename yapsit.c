@@ -1,4 +1,5 @@
 #include <argp.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -10,6 +11,8 @@
 
 #include "constants.h"
 #include "types.h"
+
+#define DRAW_BUFFER 50000
 
 extern const Sprites sprites;
 
@@ -247,8 +250,8 @@ static void reset() {
 
 static void draw(uint8_t w, uint8_t h, const uint8_t *image,
                  const uint8_t palette[16][3]) {
-  size_t size = (h + 1) / 2 * (w * 44 + 1) + 1;
-  char *buf = out = checked_malloc(size);
+  char buf[DRAW_BUFFER];
+  char *out = buf;
   for (size_t y = 0; y < h; y += 2) {
     for (size_t x = 0; x < w; x++) {
       uint8_t u = image[y * w + x];
@@ -284,10 +287,11 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
     *out++ = '\n';
   }
   *out++ = 0;
-  printf("%s", buf);
-  free(buf);
+  assert(out - buf <= DRAW_BUFFER);
+  puts(buf);
 }
 
+// TODO: use getopt instead.
 static struct argp_option options[] = {
     {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
     {"sheet", 's', "SID[-SID]", 0, "Filter by sprite sheet", 0},
