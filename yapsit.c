@@ -49,12 +49,13 @@ static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
 }
 
 static void huffman_init(HuffmanContext *context, BitstreamContext *bitstream) {
+  uint8_t bitlen = read_int(bitstream, 3) + 1;
   HuffmanBranch dummy;
   size_t perm_len = 0;
   decode_node(bitstream, context->nodes, 0, &perm_len, &dummy);
   uint8_t perm[256];
   for (size_t i = 0; i < perm_len; i++)
-    perm[i] = read_int(bitstream, 8);
+    perm[i] = read_int(bitstream, bitlen);
   for (HuffmanBranch *branch = &context->nodes[0].l; perm_len; branch++) {
     if (branch->is_leaf) {
       branch->value = perm[branch->value];
