@@ -311,12 +311,15 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     return Compressed(sizes, colors, bitstreams, bitlens, lz)  # type: ignore
 
 
+def int_to_bits(x, size):
+    return [(x & (1 << i)) >> i for i in reversed(range(size))]
+
+
 def huffman_bits(form, perm):
-    bits = list(form)
+    bitlen = max(x.bit_length() for x in perm)
+    bits = int_to_bits(bitlen - 1, 3) + list(form)
     for x in perm:
-        # TODO: minimize bit length
-        for i in reversed(range(8)):
-            bits.append((x & (1 << i)) >> i)
+        bits.extend(int_to_bits(x, bitlen))
     return bits
 
 
