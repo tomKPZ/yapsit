@@ -1,5 +1,5 @@
-#include <argp.h>
 #include <assert.h>
+#include <getopt.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -285,18 +285,6 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
   puts(buf);
 }
 
-// TODO: use getopt instead to support musl.
-static struct argp_option options[] = {
-    {"id", 'i', "ID[-ID]", 0, "Filter by ID", 0},
-    {"sheet", 's', "SID[-SID]", 0, "Filter by sprite sheet", 0},
-    {"variants", 'v', "VID[-VID]", 0, "Filter by variant ID", 0},
-    {"frame", 'f', "FID[-FID]", 0, "Filter by frame number", 0},
-    {"width", 'w', "W[-MAX]", 0, "Filter by sprite width", 0},
-    {"height", 'h', "H[-MAX]", 0, "Filter by sprite height", 0},
-    {"test", 't', 0, 0, "Output all sprites", 1},
-    {0},
-};
-
 static bool parse_u16(const char *s, uint16_t *i) {
   unsigned long len = strlen(s);
   if (len <= 0 || len > 5)
@@ -321,51 +309,35 @@ static bool parse_range(char *arg, Range *range) {
   return parse_u16(arg, &range->lo) && parse_u16(upper, &range->hi);
 }
 
-static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-  Arguments *args = state->input;
-  switch (key) {
-  case 'i':
-    if (!parse_range(arg, &args->id))
-      return ERANGE;
-    break;
-  case 's':
-    if (!parse_range(arg, &args->sheet))
-      return ERANGE;
-    break;
-  case 'v':
-    if (!parse_range(arg, &args->variants))
-      return ERANGE;
-    break;
-  case 'f':
-    if (!parse_range(arg, &args->frame))
-      return ERANGE;
-    break;
-  case 'w':
-    if (!parse_range(arg, &args->width))
-      return ERANGE;
-    break;
-  case 'h':
-    if (!parse_range(arg, &args->height))
-      return ERANGE;
-    break;
-  case 't':
-    args->test = true;
-    break;
-  case ARGP_KEY_ARG:
-    return 0;
-  default:
-    return ARGP_ERR_UNKNOWN;
-  }
-  return 0;
-}
-
-static struct argp argp = {
-    options, parse_opt, 0, "Show a random pokemon sprite.", 0, 0, 0};
-
 static void init_range(Range *range) {
   range->lo = 0;
   range->hi = 0xffff;
 }
+
+static const char usage[] =
+    "Usage: yapsit [OPTION...]\n"
+    "Show a random pokemon sprite.\n"
+    "\n"
+    "  -f, --frame=FID[-FID]      Filter by frame number\n"
+    "  -h, --height=H[-MAX]       Filter by sprite height\n"
+    "  -i, --id=ID[-ID]           Filter by ID\n"
+    "  -s, --sheet=SID[-SID]      Filter by sprite sheet\n"
+    "  -v, --variants=VID[-VID]   Filter by variant ID\n"
+    "  -w, --width=W[-MAX]        Filter by sprite width\n"
+    "  -t, --test                 Output all sprites\n"
+    "  -?, --help                 Give this help list\n";
+
+static struct option options[] = {
+    {"id", required_argument, 0, 'i'},
+    {"sheet", required_argument, 0, 's'},
+    {"variants", required_argument, 0, 'v'},
+    {"frame", required_argument, 0, 'f'},
+    {"width", required_argument, 0, 'w'},
+    {"height", required_argument, 0, 'h'},
+    {"test", no_argument, 0, 't'},
+    {"help", no_argument, 0, '?'},
+    {0, 0, 0, 0},
+};
 
 int main(int argc, char *argv[]) {
   Arguments args;
@@ -376,8 +348,44 @@ int main(int argc, char *argv[]) {
   init_range(&args.width);
   init_range(&args.height);
   args.test = false;
-  if (argp_parse(&argp, argc, argv, 0, 0, &args))
-    return 1;
+  int c;
+  while ((c = getopt_long(argc, argv, "i:s:v:f:w:h:t:?", options, NULL)) !=
+         -1) {
+    switch (c) {
+    case 'i':
+      if (!parse_range(optarg, &args.id))
+        return 1;
+      break;
+    case 's':
+      if (!parse_range(optarg, &args.sheet))
+        return 1;
+      break;
+    case 'v':
+      if (!parse_range(optarg, &args.variants))
+        return 1;
+      break;
+    case 'f':
+      if (!parse_range(optarg, &args.frame))
+        return 1;
+      break;
+    case 'w':
+      if (!parse_range(optarg, &args.width))
+        return 1;
+      break;
+    case 'h':
+      if (!parse_range(optarg, &args.height))
+        return 1;
+      break;
+    case 't':
+      args.test = true;
+      break;
+    case '?':
+      puts(usage);
+      return 0;
+    default:
+      return 1;
+    }
+  }
 
   BitstreamContext bitstream = {sprites.bitstream, 0};
   HuffmanContext color_context;
