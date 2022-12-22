@@ -95,10 +95,14 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
   uint8_t sprite_sheet;
   const uint8_t *sprite_variants;
   for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
+    bool sheet_in_range = false;
+    for (uint8_t s = 0; s < sprites.groups[gid]; s++)
+      sheet_in_range |= in_range(sheet + s, &args->sheet);
     for (size_t id = 0; id < sprites.limits[gid];
          id++, offset += image->bitlen, image++) {
-      // TODO: Verify sheet, variants, frame if possible.
-      if (in_range(id, &args->id) && in_range(image->w - 1, &args->width) &&
+      // TODO: Verify variants, frame if possible.
+      if (sheet_in_range && in_range(id, &args->id) &&
+          in_range(image->w - 1, &args->width) &&
           in_range(image->h - 1, &args->height) && rand() % ++n == 0) {
         sprite = image;
         *offset_out = offset;
