@@ -19,6 +19,8 @@
 
 extern const Sprites sprites;
 
+static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
+
 static bool read_bit(BitstreamContext *bitstream) {
   uint8_t byte = bitstream->bits[bitstream->offset / 8];
   bool bit = byte & (1 << (7 - bitstream->offset % 8));
@@ -83,8 +85,22 @@ static inline bool in_range(size_t x, const Range *range) {
   return x >= range->lo && x <= range->hi;
 }
 
+static bool any_variants_in_range(const uint8_t *variants, uint8_t count,
+                                  const Range *range) {
+  int max_v = 0;
+  for (uint8_t i = 0; i < count; i++)
+    max_v = max(max_v, variants[i]);
+  // TODO: switch to ranges overlap.
+  for (int v = 0; v < max_v; v++) {
+    if (in_range(v, range))
+      return true;
+  }
+  return false;
+}
+
 static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
                                    uint8_t *z_out) {
+  // TODO: Clean up this mess.
   size_t n = 0;
   const Sprite *sprite = NULL;
   size_t offset = 0;
@@ -99,15 +115,18 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
     bool frame_in_range = false;
     for (uint8_t s = 0; s < sprites.groups[gid]; s++) {
       sheet_in_range |= in_range(sheet + s, &args->sheet);
+      // TODO: switch to ranges overlap.
       for (uint8_t f = 0; f < sprites.frames[sheet + s]; f++)
         frame_in_range |= in_range(f, &args->frame);
     }
     for (size_t id = 0; id < sprites.limits[gid];
          id++, offset += image->bitlen, image++) {
-      // TODO: Verify variants if possible.
       if (sheet_in_range && frame_in_range && in_range(id, &args->id) &&
           in_range(image->w - 1, &args->width) &&
-          in_range(image->h - 1, &args->height) && rand() % ++n == 0) {
+          in_range(image->h - 1, &args->height) &&
+          any_variants_in_range(variants, sprites.groups[gid],
+                                &args->variants) &&
+          rand() % ++n == 0) {
         sprite = image;
         *offset_out = offset;
         sprite_gid = gid;
@@ -158,6 +177,7 @@ static void choose_palette(BitstreamContext *bitstream,
                            uint8_t palette[16][3]) {
   uint8_t palettes[2][16][3];
   decompress_palette(bitstream, color_context, palette_max, palettes);
+  // TODO: Allow specifying shiny chance.
   memcpy(palette, palettes[rand() % 16 == 0], sizeof(palettes[0]));
 }
 
@@ -190,8 +210,6 @@ static void decompress_image(uint8_t *buf, uint8_t w, uint8_t h, uint8_t d,
       *(buf++) = huffman_decode(&contexts[4], bitstream);
   }
 }
-
-static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
 
 static uint8_t palette_max(uint8_t *image, uint8_t w, uint8_t h) {
   uint8_t res = 0;
