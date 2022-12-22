@@ -55,6 +55,7 @@ def lz3d(data, size, data2bits):
     n = len(data) + 1
     dp = ffibuilder.new("int[%d][7]" % n, [[0] + [-1] * 6] * n)
     window = 10000 if len(data) > 80000 else len(data)
+    window = 100
     lib.lz3d(*size, window, data, data2bits, dp)  # type: ignore
 
     node = 0
@@ -253,7 +254,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
 
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
-    for _ in range(5):
+    for _ in range(1):
         pool = Pool()
         perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
         _, streams = zip(

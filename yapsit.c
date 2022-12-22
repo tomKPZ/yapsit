@@ -314,78 +314,82 @@ static void init_range(Range *range) {
   range->hi = 0xffff;
 }
 
+#define RANGE_ARGS 6
+
 static const char usage[] =
     "Usage: yapsit [OPTION...]\n"
     "Show a random pokemon sprite.\n"
     "\n"
-    "  -f, --frame=FID[-FID]      Filter by frame number\n"
-    "  -h, --height=H[-MAX]       Filter by sprite height\n"
     "  -i, --id=ID[-ID]           Filter by ID\n"
     "  -s, --sheet=SID[-SID]      Filter by sprite sheet\n"
     "  -v, --variants=VID[-VID]   Filter by variant ID\n"
-    "  -w, --width=W[-MAX]        Filter by sprite width\n"
+    "  -f, --frame=FID[-FID]      Filter by frame number\n"
+    "  -W, --width=W[-MAX]        Filter by sprite width\n"
+    "  -H, --height=H[-MAX]       Filter by sprite height\n"
     "  -t, --test                 Output all sprites\n"
-    "  -?, --help                 Give this help list\n";
+    "  -h, --help                 Give this help list\n";
 
 static struct option options[] = {
     {"id", required_argument, 0, 'i'},
     {"sheet", required_argument, 0, 's'},
     {"variants", required_argument, 0, 'v'},
     {"frame", required_argument, 0, 'f'},
-    {"width", required_argument, 0, 'w'},
-    {"height", required_argument, 0, 'h'},
+    {"width", required_argument, 0, 'W'},
+    {"height", required_argument, 0, 'H'},
     {"test", no_argument, 0, 't'},
-    {"help", no_argument, 0, '?'},
+    {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0},
 };
 
-int main(int argc, char *argv[]) {
-  Arguments args;
-  init_range(&args.id);
-  init_range(&args.sheet);
-  init_range(&args.variants);
-  init_range(&args.frame);
-  init_range(&args.width);
-  init_range(&args.height);
-  args.test = false;
-  int c;
-  while ((c = getopt_long(argc, argv, "i:s:v:f:w:h:t:?", options, NULL)) !=
-         -1) {
-    switch (c) {
+void init_args(Arguments *args, int argc, char *argv[]) {
+  for (size_t i = 0; i < RANGE_ARGS; i++)
+    init_range(&args->id + i);
+  args->test = false;
+  while (true) {
+    switch (getopt_long(argc, argv, "i:s:v:f:W:H:th", options, NULL)) {
+    case -1:
+      return;
     case 'i':
-      if (!parse_range(optarg, &args.id))
-        return 1;
+      if (!parse_range(optarg, &args->id))
+        exit(EXIT_FAILURE);
       break;
     case 's':
-      if (!parse_range(optarg, &args.sheet))
-        return 1;
+      if (!parse_range(optarg, &args->sheet))
+        exit(EXIT_FAILURE);
       break;
     case 'v':
-      if (!parse_range(optarg, &args.variants))
-        return 1;
+      if (!parse_range(optarg, &args->variants))
+        exit(EXIT_FAILURE);
       break;
     case 'f':
-      if (!parse_range(optarg, &args.frame))
-        return 1;
+      if (!parse_range(optarg, &args->frame))
+        exit(EXIT_FAILURE);
       break;
-    case 'w':
-      if (!parse_range(optarg, &args.width))
-        return 1;
+    case 'W':
+      if (!parse_range(optarg, &args->width))
+        exit(EXIT_FAILURE);
       break;
-    case 'h':
-      if (!parse_range(optarg, &args.height))
-        return 1;
+    case 'H':
+      if (!parse_range(optarg, &args->height))
+        exit(EXIT_FAILURE);
       break;
     case 't':
-      args.test = true;
+      args->test = true;
       break;
-    case '?':
+    case 'h':
       puts(usage);
-      return 0;
+      exit(EXIT_SUCCESS);
+    case '?':
     default:
-      return 1;
+      fputs(usage, stderr);
+      exit(EXIT_FAILURE);
     }
   }
+}
+
+int main(int argc, char *argv[]) {
+  Arguments args;
+  init_args(&args, argc, argv);
 
   BitstreamContext bitstream = {sprites.bitstream, 0};
   HuffmanContext color_context;
@@ -416,7 +420,7 @@ int main(int argc, char *argv[]) {
     uint8_t z;
     const Sprite *sprite = choose_sprite(&args, &offset, &z);
     if (sprite == NULL)
-      return 1;
+      return EXIT_FAILURE;
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
     bitstream.offset += offset;
 
@@ -431,5 +435,5 @@ int main(int argc, char *argv[]) {
     draw(w, h, image + w * h * z, palette);
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
