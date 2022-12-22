@@ -12,6 +12,7 @@
 #include "constants.h"
 #include "types.h"
 
+#define RANGE_ARGS 6
 #define DRAW_BUFFER 44294
 // TODO: Move this to gen_header.py
 #define DECODE_BUFFER 665280
@@ -88,8 +89,10 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
   const Sprite *sprite = NULL;
   size_t offset = 0;
   const Sprite *image = sprites.images;
+  uint8_t sheet = 0;
   const uint8_t *variants = sprites.variants;
   size_t sprite_gid;
+  uint8_t sprite_sheet;
   const uint8_t *sprite_variants;
   for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
     for (size_t id = 0; id < sprites.limits[gid];
@@ -100,25 +103,25 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
         sprite = image;
         *offset_out = offset;
         sprite_gid = gid;
+        sprite_sheet = sheet;
         sprite_variants = variants;
       }
       variants += sprites.groups[gid];
     }
+    sheet += sprites.groups[gid];
   }
   if (!sprite)
     return NULL;
 
   n = 0;
-  uint8_t sheet = 0;
-  for (size_t g = 0; g < sprite_gid; g++)
-    sheet += sprites.groups[g];
   image = NULL;
-  for (size_t g = 0, z = 0, s = sheet; g < sprites.groups[sprite_gid];
-       g++, sprite_variants++, s++) {
+  for (size_t g = 0, z = 0; g < sprites.groups[sprite_gid];
+       g++, sprite_variants++, sprite_sheet++) {
     for (size_t v = 0; v < *sprite_variants; v++) {
-      for (size_t f = 0; f < sprites.frames[s]; f++, z++) {
-        if (in_range(s, &args->sheet) && in_range(v, &args->variants) &&
-            in_range(f, &args->frame) && rand() % ++n == 0) {
+      for (size_t f = 0; f < sprites.frames[sprite_sheet]; f++, z++) {
+        if (in_range(sprite_sheet, &args->sheet) &&
+            in_range(v, &args->variants) && in_range(f, &args->frame) &&
+            rand() % ++n == 0) {
           *z_out = z;
           image = sprite;
         }
@@ -314,8 +317,6 @@ static void init_range(Range *range) {
   range->hi = 0xffff;
 }
 
-#define RANGE_ARGS 6
-
 static const char usage[] =
     "Usage: yapsit [OPTION...]\n"
     "Show a random pokemon sprite.\n"
@@ -341,7 +342,7 @@ static struct option options[] = {
     {0, 0, 0, 0},
 };
 
-void init_args(Arguments *args, int argc, char *argv[]) {
+static void init_args(Arguments *args, int argc, char *argv[]) {
   for (size_t i = 0; i < RANGE_ARGS; i++)
     init_range(&args->id + i);
   args->test = false;

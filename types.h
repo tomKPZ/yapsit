@@ -8,6 +8,11 @@
 #include "constants.h"
 
 typedef struct {
+  const uint8_t *bits;
+  size_t offset;
+} BitstreamContext;
+
+typedef struct {
   bool is_leaf;
   uint8_t value;
 } HuffmanBranch;
@@ -16,11 +21,6 @@ typedef struct {
   HuffmanBranch l;
   HuffmanBranch r;
 } HuffmanNode;
-
-typedef struct {
-  const uint8_t *bits;
-  size_t offset;
-} BitstreamContext;
 
 typedef struct {
   HuffmanNode nodes[256];
