@@ -96,12 +96,16 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
   const uint8_t *sprite_variants;
   for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
     bool sheet_in_range = false;
-    for (uint8_t s = 0; s < sprites.groups[gid]; s++)
+    bool frame_in_range = false;
+    for (uint8_t s = 0; s < sprites.groups[gid]; s++) {
       sheet_in_range |= in_range(sheet + s, &args->sheet);
+      for (uint8_t f = 0; f < sprites.frames[sheet + s]; f++)
+        frame_in_range |= in_range(f, &args->frame);
+    }
     for (size_t id = 0; id < sprites.limits[gid];
          id++, offset += image->bitlen, image++) {
-      // TODO: Verify variants, frame if possible.
-      if (sheet_in_range && in_range(id, &args->id) &&
+      // TODO: Verify variants if possible.
+      if (sheet_in_range && frame_in_range && in_range(id, &args->id) &&
           in_range(image->w - 1, &args->width) &&
           in_range(image->h - 1, &args->height) && rand() % ++n == 0) {
         sprite = image;
@@ -122,7 +126,7 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
   for (size_t g = 0, z = 0; g < sprites.groups[sprite_gid];
        g++, sprite_variants++, sprite_sheet++) {
     for (size_t v = 0; v < *sprite_variants; v++) {
-      for (size_t f = 0; f < sprites.frames[sprite_sheet]; f++, z++) {
+      for (uint8_t f = 0; f < sprites.frames[sprite_sheet]; f++, z++) {
         if (in_range(sprite_sheet, &args->sheet) &&
             in_range(v, &args->variants) && in_range(f, &args->frame) &&
             rand() % ++n == 0) {
