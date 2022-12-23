@@ -85,17 +85,12 @@ static inline bool in_range(size_t x, const Range *range) {
   return x >= range->lo && x <= range->hi;
 }
 
-static bool ranges_overlap(const Range *r1, const Range *r2) {
-  return !(r2->hi < r1->lo || r2->lo > r1->hi);
-}
-
 static bool any_variants_in_range(const uint8_t *variants, uint8_t count,
                                   const Range *range) {
   int max_v = 0;
   for (uint8_t i = 0; i < count; i++)
     max_v = max(max_v, variants[i]);
-  Range check = {0, max_v - 1};
-  return ranges_overlap(range, &check);
+  return range->lo < max_v;
 }
 
 static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
@@ -115,8 +110,7 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
     bool frame_in_range = false;
     for (uint8_t s = 0; s < sprites.groups[gid]; s++) {
       sheet_in_range |= in_range(sheet + s, &args->sheet);
-      Range check = {0, sprites.frames[sheet + s] - 1};
-      frame_in_range |= ranges_overlap(&args->frame, &check);
+      frame_in_range |= args->frame.lo < sprites.frames[sheet + s];
     }
     for (size_t id = 0; id < sprites.limits[gid];
          id++, offset += image->bitlen, image++) {
