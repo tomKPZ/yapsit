@@ -12,6 +12,8 @@
 #include "constants.h"
 #include "types.h"
 
+#define SHINY_NUMERATOR 1
+#define SHINY_DENOMINATOR 16
 #define RANGE_ARGS 6
 #define DRAW_BUFFER 44294
 // TODO: Move this to gen_header.py
@@ -165,13 +167,13 @@ static void decompress_palette(BitstreamContext *bitstream,
   }
 }
 
-static void choose_palette(BitstreamContext *bitstream,
+static void choose_palette(const Arguments *args, BitstreamContext *bitstream,
                            HuffmanContext *color_context, uint8_t palette_max,
                            uint8_t palette[16][3]) {
   uint8_t palettes[2][16][3];
   decompress_palette(bitstream, color_context, palette_max, palettes);
-  // TODO: Allow specifying shiny chance.
-  memcpy(palette, palettes[rand() % 16 == 0], sizeof(palettes[0]));
+  bool shiny = rand() % args->denominator < args->numerator;
+  memcpy(palette, palettes[shiny], sizeof(palettes[0]));
 }
 
 static void decompress_image(uint8_t *buf, uint8_t w, uint8_t h, uint8_t d,
@@ -307,19 +309,25 @@ static void draw(uint8_t w, uint8_t h, const uint8_t *image,
   puts(buf);
 }
 
-static bool parse_u16(const char *s, uint16_t *i) {
-  unsigned long len = strlen(s);
-  if (len <= 0 || len > 5)
-    return false;
-  for (const char *t = s; *t; t++) {
-    if (*t < '0' || *t > '9')
+static bool parse_u32(const char *s, uint32_t *i) {
+  *i = 0;
+  for (; *s; s++) {
+    if (*s > '9' || *s < '0')
       return false;
+    uint64_t j = *i * 10 + *s - '0';
+    if (j > 0xffffffff)
+      return false;
+    *i = j;
   }
-  int j = atoi(s);
-  if (j <= 0 || j > 65536)
+  return true;
+}
+
+static bool parse_range_endpoint(const char *s, uint16_t *i) {
+  uint32_t j;
+  if (!parse_u32(s, &j))
     return false;
   *i = j - 1;
-  return true;
+  return j != 0 && j <= 0xffff;
 }
 
 static bool parse_range(char *arg, Range *range) {
@@ -328,7 +336,8 @@ static bool parse_range(char *arg, Range *range) {
     *upper++ = '\0';
   else
     upper = arg;
-  return parse_u16(arg, &range->lo) && parse_u16(upper, &range->hi);
+  return parse_range_endpoint(arg, &range->lo) &&
+         parse_range_endpoint(upper, &range->hi);
 }
 
 static void init_range(Range *range) {
@@ -346,6 +355,8 @@ static const char usage[] =
     "  -f, --frame=FID[-FID]      Filter by frame number\n"
     "  -W, --width=W[-MAX]        Filter by sprite width\n"
     "  -H, --height=H[-MAX]       Filter by sprite height\n"
+    "  -n, --numerator=N          Shiny chance numerator\n"
+    "  -d, --denominator=D        Shiny chance denominator\n"
     "  -t, --test                 Output all sprites\n"
     "  -h, --help                 Give this help list\n";
 
@@ -356,6 +367,8 @@ static struct option options[] = {
     {"frame", required_argument, 0, 'f'},
     {"width", required_argument, 0, 'W'},
     {"height", required_argument, 0, 'H'},
+    {"numerator", required_argument, 0, 'n'},
+    {"denominator", required_argument, 0, 'd'},
     {"test", no_argument, 0, 't'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0},
@@ -364,9 +377,11 @@ static struct option options[] = {
 static void init_args(Arguments *args, int argc, char *argv[]) {
   for (size_t i = 0; i < RANGE_ARGS; i++)
     init_range(&args->id + i);
+  args->numerator = SHINY_NUMERATOR;
+  args->denominator = SHINY_DENOMINATOR;
   args->test = false;
   while (true) {
-    switch (getopt_long(argc, argv, "i:s:v:f:W:H:th", options, NULL)) {
+    switch (getopt_long(argc, argv, "i:s:v:f:W:H:n:d:th", options, NULL)) {
     case -1:
       return;
     case 'i':
@@ -391,6 +406,14 @@ static void init_args(Arguments *args, int argc, char *argv[]) {
       break;
     case 'H':
       if (!parse_range(optarg, &args->height))
+        exit(EXIT_FAILURE);
+      break;
+    case 'n':
+      if (!parse_u32(optarg, &args->numerator))
+        exit(EXIT_FAILURE);
+      break;
+    case 'd':
+      if (!parse_u32(optarg, &args->denominator))
         exit(EXIT_FAILURE);
       break;
     case 't':
@@ -448,7 +471,7 @@ int main(int argc, char *argv[]) {
 
     uint8_t palette[16][3];
     for (size_t p = 0; p <= z; p++) {
-      choose_palette(&bitstream, &color_context,
+      choose_palette(&args, &bitstream, &color_context,
                      palette_max(image + w * h * p, w, h), palette);
     }
 

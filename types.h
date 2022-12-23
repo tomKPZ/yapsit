@@ -56,6 +56,8 @@ typedef struct {
   Range frame;
   Range width;
   Range height;
+  uint32_t numerator;
+  uint32_t denominator;
   bool test;
 } Arguments;
 
