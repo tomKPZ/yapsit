@@ -220,7 +220,7 @@ static char *out;
 static uint8_t pfg = 0;
 static uint8_t pbg = 0;
 
-static void itoa(uint8_t i) {
+static void output_u8(uint8_t i) {
   out[2] = i % 10 + '0';
   i /= 10;
   out[1] = i % 10 + '0';
@@ -232,7 +232,7 @@ static void itoa(uint8_t i) {
 static void output_color(const uint8_t color[3]) {
   for (size_t i = 0; i < 3; i++) {
     *out++ = ';';
-    itoa(color[i]);
+    output_u8(color[i]);
   }
 }
 
