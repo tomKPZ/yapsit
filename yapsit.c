@@ -19,8 +19,6 @@
 // TODO: Move this to gen_header.py
 #define DECODE_BUFFER 665280
 
-extern const Sprites sprites;
-
 static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
 
 static bool read_bit(BitstreamContext *bitstream) {

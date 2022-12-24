@@ -61,4 +61,6 @@ typedef struct {
   bool test;
 } Arguments;
 
+extern const Sprites sprites;
+
 #endif
