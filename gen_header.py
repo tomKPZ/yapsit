@@ -34,7 +34,8 @@ Images = namedtuple(
     "Images", ["images", "variants", "limits", "groups", "ids", "frames"]
 )
 Compressed = namedtuple(
-    "Compressed", ["sizes", "colors", "bitstream", "bitlens", "large_lens", "lz"]
+    "Compressed",
+    ["sizes", "colors", "bitstream", "bitlens", "large_lens", "decode_buffer", "lz"],
 )
 
 
@@ -241,6 +242,7 @@ def compress_images(uncompressed):
     sizes = [size for size, _, _ in uncompressed]
     images = [image for _, image, _ in uncompressed]
     palettess = [palettes for _, _, palettes in uncompressed]
+    decode_buffer = max(w * h * d for w, h, d in sizes)
 
     global ffibuilder, lib
     ffibuilder = FFI()
@@ -317,7 +319,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         assert min_bitlen >= len(large_lens)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000))
     ffibuilder.dlclose(lib)
-    return Compressed(sizes, colors, bitstreams, bitlens, large_lens, lz)  # type: ignore
+    return Compressed(sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz)  # type: ignore
 
 
 def int_to_bits(x, size):
@@ -380,6 +382,7 @@ def output(compressed: Compressed, images: Images):
         print("#define SPRITE_COUNT %d" % len(images.images), file=f)
         print("#define ID_COUNT %d" % images.ids, file=f)
         print("#define LARGE_LENS_COUNT %d" % len(compressed.large_lens), file=f)
+        print("#define DECODE_BUFFER %d" % compressed.decode_buffer, file=f)
 
 
 def main():
