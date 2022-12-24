@@ -7,7 +7,6 @@ from json import load
 from math import ceil, log2
 from multiprocessing import Pool
 from os import path
-from sys import stderr
 
 import PIL.Image
 from cffi import FFI
@@ -299,6 +298,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         bitstreams = []
         bitlens = []
         large_lens = []
+        min_bitlen = 0xFFFF
         for stream, palette in zip(streams, palettes):
             bitstream = []
             for t in stream:
@@ -312,7 +312,9 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
                 large_lens.append(len(bitstream))
             else:
                 bitlens.append(len(bitstream))
+                min_bitlen = min(min_bitlen, bitlens[-1])
             bitstreams.extend(bitstream)
+        assert min_bitlen >= len(large_lens)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000))
     ffibuilder.dlclose(lib)
     return Compressed(sizes, colors, bitstreams, bitlens, large_lens, lz)  # type: ignore
