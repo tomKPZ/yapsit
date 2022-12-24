@@ -16,8 +16,6 @@
 #define SHINY_DENOMINATOR 16
 #define RANGE_ARGS 6
 #define DRAW_BUFFER 44294
-// TODO: Move this to gen_header.py
-#define DECODE_BUFFER 665280
 
 static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
 
