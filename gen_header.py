@@ -121,8 +121,7 @@ def huffman_info(counter, data2bits):
             ceil(shannon),
             (bitlen - shannon) / 8,
             100 * (bitlen / shannon - 1),
-        ),
-        file=stderr,
+        )
     )
 
 
@@ -314,7 +313,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
             else:
                 bitlens.append(len(bitstream))
             bitstreams.extend(bitstream)
-        print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000), file=stderr)
+        print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000))
     ffibuilder.dlclose(lib)
     return Compressed(sizes, colors, bitstreams, bitlens, large_lens, lz)  # type: ignore
 
@@ -331,44 +330,45 @@ def huffman_bits(form, perm):
     return bits
 
 
-def output_bits(bits):
+def output_bits(bits, f):
     while len(bits) % 8 != 0:
         bits.append(0)
-    print("{")
+    print("{", file=f)
     for i in range(0, len(bits), 8):
         encoded = 0
         for bit in bits[i : i + 8]:
             encoded *= 2
             encoded += bit
-        print("0x%02X," % encoded, end="")
-    print("},")
+        print("0x%02X," % encoded, end="", file=f)
+    print("},", file=f)
     return len(bits) // 8
 
 
-def output_array(name, arr):
-    print("// " + name)
-    print("{")
-    print(", ".join(str(x) for x in arr))
-    print("},")
+def output_array(name, arr, f):
+    print("// " + name, file=f)
+    print("{", file=f)
+    print(", ".join(str(x) for x in arr), file=f)
+    print("},", file=f)
 
 
 def output(compressed: Compressed, images: Images):
-    print('#include "types.h"')
-    print("const Sprites sprites = {")
-    output_array("large_lens", compressed.large_lens)
-    output_array("limits", images.limits)
-    output_array("variants", images.variants)
-    output_array("groups", images.groups)
-    output_array("frames", images.frames)
-    print("{")
-    for size, bitlen in zip(compressed.sizes, compressed.bitlens):
-        print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)))
-    print("},")
-    bitstream = huffman_bits(compressed.colors.form, compressed.colors.perm)
-    for field in compressed.lz:
-        bitstream += huffman_bits(field.form, field.perm)
-    bytecount = output_bits(bitstream + compressed.bitstream)
-    print("};")
+    with open(path.join(SCRIPT_DIR, "sprites.c"), "w") as f:
+        print('#include "types.h"', file=f)
+        print("const Sprites sprites = {", file=f)
+        output_array("large_lens", compressed.large_lens, f)
+        output_array("limits", images.limits, f)
+        output_array("variants", images.variants, f)
+        output_array("groups", images.groups, f)
+        output_array("frames", images.frames, f)
+        print("{", file=f)
+        for size, bitlen in zip(compressed.sizes, compressed.bitlens):
+            print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)), file=f)
+        print("},", file=f)
+        bitstream = huffman_bits(compressed.colors.form, compressed.colors.perm)
+        for field in compressed.lz:
+            bitstream += huffman_bits(field.form, field.perm)
+        bytecount = output_bits(bitstream + compressed.bitstream, f)
+        print("};", file=f)
 
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
         print("#define SHEET_COUNT %d" % len(images.frames), file=f)
