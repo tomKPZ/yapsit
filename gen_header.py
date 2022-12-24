@@ -16,22 +16,23 @@ ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
 MONTAGES = set(
     [
         "ruby",
-        "firered",
-        "emerald",
-        "diamond",
-        "platinum",
-        "heartgold",
-        "black",
+        # "firered",
+        # "emerald",
+        # "diamond",
+        # "platinum",
+        # "heartgold",
+        # "black",
         "old",
-        "icons",
+        # "icons",
     ]
 )
 FRAMES = [1, 2, 2, 1, 1, 2]
-SHINY = [1, 1, 1, 0, 0, 1]
+PALETTE_COUNTS = [2, 2, 2, 1, 1, 2]
 
 Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 Images = namedtuple(
-    "Images", ["images", "variants", "limits", "groups", "ids", "frames"]
+    "Images",
+    ["images", "variants", "limits", "groups", "ids", "frames", "palette_counts"],
 )
 Compressed = namedtuple(
     "Compressed",
@@ -39,13 +40,13 @@ Compressed = namedtuple(
 )
 
 
-def create_palette(sprite, shiny):
+def create_palette(zipped_sprites):
     counter = Counter()
-    for pair in zip(sprite, shiny):
-        counter[pair] -= 1
+    for colors in zipped_sprites:
+        counter[colors] -= 1
     if len(counter) > 16:
         raise Exception("Excess colors in palette")
-    transparent = ((-1, -1, -1), (-1, -1, -1))
+    transparent = ((-1, -1, -1),) * len(zipped_sprites[0])
     del counter[transparent]
     palette = {transparent: 0}
     for _, color in sorted(zip(counter.values(), counter.keys())):
@@ -142,13 +143,16 @@ def read_images():
     images = []
     variants = []
     frames = []
+    palette_counts = []
     metadata = get_metadata()
     for (w, h), group in metadata:
         # TODO: simplify
         spritess = defaultdict(list)
         variantss = defaultdict(list)
+        palette_count = set()
         for name, variants_id, variant_counts in group:
             frames.append(FRAMES[variants_id])
+            palette_count.add(PALETTE_COUNTS[variants_id])
             filename = path.join(ASSETS_DIR, name + ".png")
             montage = PIL.Image.open(filename).convert("RGBA")
             row = 0
@@ -157,23 +161,24 @@ def read_images():
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
-                        shiny = []
                         for y in range(h):
                             for x in range(w):
                                 xp = 2 * frame * w + x
                                 yp = h * row + y
-                                data.append(pixel(montage, xp, yp))
-                                # TODO: Don't output shiny palette if not necessary.
-                                if SHINY[variants_id]:
-                                    shiny.append(pixel(montage, w + xp, yp))
-                                else:
-                                    shiny.append(pixel(montage, xp, yp))
+                                data.append(
+                                    tuple(
+                                        pixel(montage, w * i + xp, yp)
+                                        for i in range(PALETTE_COUNTS[variants_id])
+                                    )
+                                )
 
-                        palette = create_palette(data, shiny)
-                        sprite = [palette[colors] for colors in zip(data, shiny)]
+                        palette = create_palette(data)
+                        sprite = [palette[colors] for colors in data]
                         spritess[i].append((sprite, palette))
 
                     row += 1
+        assert len(palette_count) == 1
+        palette_counts.append(next(iter(palette_count)))
         variants.extend(sum(variantss.values(), start=[]))
         for sprites in spritess.values():
             xl = yl = 255
@@ -221,7 +226,7 @@ def read_images():
                 image = [inv[c] for c in sprite]
                 image_stream.extend(image)
                 p = list(palette.keys())
-                p += [((0, 0, 0), (0, 0, 0))] * (16 - len(p))
+                p += [((0, 0, 0),) * palette_counts[-1]] * (16 - len(p))
                 for key, c in palette.items():
                     p[inv[c]] = key
                 palettes.append((p, list(set(image) - {-1})))
@@ -230,7 +235,7 @@ def read_images():
     limits = [len(group[0][2]) for _, group in metadata]
     groups = [len(group) for _, group in metadata]
     ids = max(limits)
-    return Images(images, variants, limits, groups, ids, frames)
+    return Images(images, variants, limits, groups, ids, frames, palette_counts)
 
 
 def compress_image(d2bs, input):
@@ -364,6 +369,7 @@ def output(compressed: Compressed, images: Images):
         output_array("variants", images.variants, f)
         output_array("groups", images.groups, f)
         output_array("frames", images.frames, f)
+        output_array("palette_counts", images.palette_counts, f)
         print("{", file=f)
         for size, bitlen in zip(compressed.sizes, compressed.bitlens):
             print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)), file=f)
@@ -383,6 +389,7 @@ def output(compressed: Compressed, images: Images):
         print("#define ID_COUNT %d" % images.ids, file=f)
         print("#define LARGE_LENS_COUNT %d" % len(compressed.large_lens), file=f)
         print("#define DECODE_BUFFER %d" % compressed.decode_buffer, file=f)
+        print("#define MAX_PALETTES %d" % max(images.palette_counts), file=f)
 
 
 def main():
