@@ -35,13 +35,13 @@ typedef struct {
 } Sprite;
 
 typedef struct {
-  Sprite images[SPRITE_COUNT];
-  uint8_t bitstream[BITSTREAM_LEN];
-  uint8_t variants[VARIANT_COUNT];
+  uint32_t large_lens[LARGE_LENS_COUNT];
   uint16_t limits[GROUP_COUNT];
+  uint8_t variants[VARIANT_COUNT];
   uint8_t groups[GROUP_COUNT];
   uint8_t frames[SHEET_COUNT];
-  uint32_t large_lens[LARGE_LENS_COUNT];
+  Sprite images[SPRITE_COUNT];
+  uint8_t bitstream[BITSTREAM_LEN];
 } Sprites;
 
 typedef struct {
@@ -50,14 +50,14 @@ typedef struct {
 } Range;
 
 typedef struct {
+  uint32_t numerator;
+  uint32_t denominator;
   Range id;
   Range sheet;
   Range variants;
   Range frame;
   Range width;
   Range height;
-  uint32_t numerator;
-  uint32_t denominator;
   bool test;
 } Arguments;
 

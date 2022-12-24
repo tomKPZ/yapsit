@@ -34,7 +34,9 @@ Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
 Images = namedtuple(
     "Images", ["images", "variants", "limits", "groups", "ids", "frames"]
 )
-Compressed = namedtuple("Compressed", ["sizes", "colors", "bitstream", "bitlens", "lz"])
+Compressed = namedtuple(
+    "Compressed", ["sizes", "colors", "bitstream", "bitlens", "large_lens", "lz"]
+)
 
 
 def create_palette(sprite, shiny):
@@ -297,6 +299,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         ]
         bitstreams = []
         bitlens = []
+        large_lens = []
         for stream, palette in zip(streams, palettes):
             bitstream = []
             for t in stream:
@@ -305,11 +308,15 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
                         bitstream.extend(huffman.data2bits[x])
             for c in palette:
                 bitstream.extend(colors.data2bits[c])
-            bitlens.append(len(bitstream))
+            if len(bitstream) > 0xFFFF:
+                bitlens.append(len(large_lens))
+                large_lens.append(len(bitstream))
+            else:
+                bitlens.append(len(bitstream))
             bitstreams.extend(bitstream)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000), file=stderr)
     ffibuilder.dlclose(lib)
-    return Compressed(sizes, colors, bitstreams, bitlens, lz)  # type: ignore
+    return Compressed(sizes, colors, bitstreams, bitlens, large_lens, lz)  # type: ignore
 
 
 def int_to_bits(x, size):
@@ -345,26 +352,22 @@ def output_array(name, arr):
     print("},")
 
 
-def output(compressed, images):
-    large_lens = []
+def output(compressed: Compressed, images: Images):
     print('#include "types.h"')
     print("const Sprites sprites = {")
+    output_array("large_lens", compressed.large_lens)
+    output_array("limits", images.limits)
+    output_array("variants", images.variants)
+    output_array("groups", images.groups)
+    output_array("frames", images.frames)
     print("{")
     for size, bitlen in zip(compressed.sizes, compressed.bitlens):
-        if bitlen > 0xFFFF:
-            large_lens.append(bitlen)
-            bitlen = len(large_lens) - 1
         print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)))
     print("},")
     bitstream = huffman_bits(compressed.colors.form, compressed.colors.perm)
     for field in compressed.lz:
         bitstream += huffman_bits(field.form, field.perm)
     bytecount = output_bits(bitstream + compressed.bitstream)
-    output_array("variants", images.variants)
-    output_array("limits", images.limits)
-    output_array("groups", images.groups)
-    output_array("frames", images.frames)
-    output_array("large_lens", large_lens)
     print("};")
 
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
@@ -374,7 +377,7 @@ def output(compressed, images):
         print("#define BITSTREAM_LEN %d" % bytecount, file=f)
         print("#define SPRITE_COUNT %d" % len(images.images), file=f)
         print("#define ID_COUNT %d" % images.ids, file=f)
-        print("#define LARGE_LENS_COUNT %d" % len(large_lens), file=f)
+        print("#define LARGE_LENS_COUNT %d" % len(compressed.large_lens), file=f)
 
 
 def main():
