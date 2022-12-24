@@ -346,11 +346,15 @@ def output_array(name, arr):
 
 
 def output(compressed, images):
+    large_lens = []
     print('#include "types.h"')
     print("const Sprites sprites = {")
     print("{")
-    for (w, h, d), bitlen in zip(compressed.sizes, compressed.bitlens):
-        print("{%d,%d,%d,%d}," % (w, h, d, bitlen))
+    for size, bitlen in zip(compressed.sizes, compressed.bitlens):
+        if bitlen > 0xFFFF:
+            large_lens.append(bitlen)
+            bitlen = len(large_lens) - 1
+        print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)))
     print("},")
     bitstream = huffman_bits(compressed.colors.form, compressed.colors.perm)
     for field in compressed.lz:
@@ -360,6 +364,7 @@ def output(compressed, images):
     output_array("limits", images.limits)
     output_array("groups", images.groups)
     output_array("frames", images.frames)
+    output_array("large_lens", large_lens)
     print("};")
 
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
@@ -369,6 +374,7 @@ def output(compressed, images):
         print("#define BITSTREAM_LEN %d" % bytecount, file=f)
         print("#define SPRITE_COUNT %d" % len(images.images), file=f)
         print("#define ID_COUNT %d" % images.ids, file=f)
+        print("#define LARGE_LENS_COUNT %d" % len(large_lens), file=f)
 
 
 def main():

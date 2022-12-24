@@ -29,10 +29,9 @@ typedef struct {
 typedef struct {
   uint8_t w;
   uint8_t h;
-  // TODO: this can be removed
   uint8_t d;
-  // TODO: try to reduce to uint16_t.
-  uint32_t bitlen;
+  uint8_t bitlen_h;
+  uint8_t bitlen_l;
 } Sprite;
 
 typedef struct {
@@ -42,6 +41,7 @@ typedef struct {
   uint16_t limits[GROUP_COUNT];
   uint8_t groups[GROUP_COUNT];
   uint8_t frames[SHEET_COUNT];
+  uint32_t large_lens[LARGE_LENS_COUNT];
 } Sprites;
 
 typedef struct {
