@@ -95,6 +95,11 @@ static bool any_variants_in_range(const uint8_t *variants, uint8_t count,
   return range->lo < max_v;
 }
 
+static uint32_t image_bitlen(const Sprite *sprite) {
+  uint16_t bitlen = sprite->bitlen_h * 256 + sprite->bitlen_l;
+  return bitlen < LARGE_LENS_COUNT ? sprites.large_lens[bitlen] : bitlen;
+}
+
 static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
                                    uint8_t *z_out) {
   // TODO: Clean up this mess.
@@ -115,7 +120,7 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
       frame_in_range |= args->frame.lo < sprites.frames[sheet + s];
     }
     for (size_t id = 0; id < sprites.limits[gid];
-         id++, offset += image->bitlen, image++) {
+         id++, offset += image_bitlen(image), image++) {
       if (sheet_in_range && frame_in_range && in_range(id, &args->id) &&
           in_range(image->w - 1, &args->width) &&
           in_range(image->h - 1, &args->height) &&
