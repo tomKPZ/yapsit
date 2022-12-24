@@ -97,7 +97,7 @@ static uint32_t image_bitlen(const Sprite *sprite) {
 }
 
 static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
-                                   uint8_t *z_out) {
+                                   uint8_t *z_out, uint8_t *palette_count_out) {
   // TODO: Clean up this mess.
   size_t n = 0;
   const Sprite *sprite = NULL;
@@ -125,6 +125,7 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
           rand() % ++n == 0) {
         sprite = image;
         *offset_out = offset;
+        *palette_count_out = sprites.palette_counts[gid];
         sprite_gid = gid;
         sprite_sheet = sheet;
         sprite_variants = variants;
@@ -157,9 +158,10 @@ static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
 static void decompress_palette(BitstreamContext *bitstream,
                                HuffmanContext *color_context,
                                uint8_t palette_max,
-                               uint8_t palettes[2][16][3]) {
+                               uint8_t palettes[MAX_PALETTES][16][3],
+                               uint8_t palette_count) {
   for (size_t i = 1; i <= palette_max; i++) {
-    for (size_t k = 0; k < 2; k++) {
+    for (size_t k = 0; k < palette_count; k++) {
       for (size_t j = 0; j < 3; j++) {
         palettes[k][i][j] =
             huffman_decode(color_context, bitstream) * 8 * 255 / 248;
@@ -170,9 +172,10 @@ static void decompress_palette(BitstreamContext *bitstream,
 
 static void choose_palette(const Arguments *args, BitstreamContext *bitstream,
                            HuffmanContext *color_context, uint8_t palette_max,
-                           uint8_t palette[16][3]) {
+                           uint8_t palette[16][3], uint8_t palette_count) {
   uint8_t palettes[2][16][3];
-  decompress_palette(bitstream, color_context, palette_max, palettes);
+  decompress_palette(bitstream, color_context, palette_max, palettes,
+                     palette_count);
   bool shiny = rand() % args->denominator < args->numerator;
   memcpy(palette, palettes[shiny], sizeof(palettes[0]));
 }
@@ -444,17 +447,20 @@ int main(int argc, char *argv[]) {
   uint8_t image[DECODE_BUFFER];
 
   if (args.test) {
-    const Sprite *images = sprites.images;
-    for (size_t i = 0; i < SPRITE_COUNT; i++) {
-      uint8_t w = images[i].w, h = images[i].h, d = images[i].d;
-      decompress_image(image, w, h, d, &bitstream, contexts);
-      uint8_t palettes[2][16][3];
-      for (size_t z = 0; z < d; z++) {
-        uint8_t *frame = image + w * h * z;
-        decompress_palette(&bitstream, &color_context, palette_max(frame, w, h),
-                           palettes);
-        for (int j = 0; j < 2; j++)
-          draw(w, h, frame, palettes[j]);
+    const Sprite *sprite = sprites.images;
+    for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
+      const uint8_t palette_count = sprites.palette_counts[gid];
+      for (size_t id = 0; id < sprites.limits[gid]; id++, sprite++) {
+        uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
+        decompress_image(image, w, h, d, &bitstream, contexts);
+        uint8_t palettes[MAX_PALETTES][16][3];
+        for (size_t z = 0; z < d; z++) {
+          uint8_t *frame = image + w * h * z;
+          decompress_palette(&bitstream, &color_context,
+                             palette_max(frame, w, h), palettes, palette_count);
+          for (int j = 0; j < palette_count; j++)
+            draw(w, h, frame, palettes[j]);
+        }
       }
     }
   } else {
@@ -462,7 +468,8 @@ int main(int argc, char *argv[]) {
 
     size_t offset;
     uint8_t z;
-    const Sprite *sprite = choose_sprite(&args, &offset, &z);
+    uint8_t palette_count;
+    const Sprite *sprite = choose_sprite(&args, &offset, &z, &palette_count);
     if (sprite == NULL)
       return EXIT_FAILURE;
     uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
@@ -473,7 +480,8 @@ int main(int argc, char *argv[]) {
     uint8_t palette[16][3];
     for (size_t p = 0; p <= z; p++) {
       choose_palette(&args, &bitstream, &color_context,
-                     palette_max(image + w * h * p, w, h), palette);
+                     palette_max(image + w * h * p, w, h), palette,
+                     palette_count);
     }
 
     draw(w, h, image + w * h * z, palette);

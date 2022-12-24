@@ -40,6 +40,7 @@ typedef struct {
   uint8_t variants[VARIANT_COUNT];
   uint8_t groups[GROUP_COUNT];
   uint8_t frames[SHEET_COUNT];
+  uint8_t palette_counts[GROUP_COUNT];
   Sprite images[SPRITE_COUNT];
   uint8_t bitstream[BITSTREAM_LEN];
 } Sprites;
