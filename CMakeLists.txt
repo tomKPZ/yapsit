@@ -14,10 +14,10 @@ set(CMAKE_C_COMPILER "clang")
 add_library(lz77 SHARED lz77.c)
 
 add_custom_command(
-  OUTPUT pokemon.c constants.h
-  COMMAND pypy3 gen_header.py > pokemon.c
+  OUTPUT sprites.c constants.h
+  COMMAND pypy3 gen_header.py
   DEPENDS gen_header.py lz77)
 
-add_executable(yapsit yapsit.c pokemon.c)
+add_executable(yapsit yapsit.c sprites.c)
 set_target_properties(yapsit PROPERTIES LINK_FLAGS_RELEASE -s)
 install(TARGETS yapsit DESTINATION bin)
