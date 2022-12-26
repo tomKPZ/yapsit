@@ -14,10 +14,10 @@
 
 #define SHINY_NUMERATOR 1
 #define SHINY_DENOMINATOR 16
-#define RANGE_ARGS 6
 #define DRAW_BUFFER 44294
 
-static uint8_t max(uint8_t a, uint8_t b) { return a > b ? a : b; }
+static uint8_t max_u8(uint8_t a, uint8_t b) { return a > b ? a : b; }
+static uint8_t min_u8(uint8_t a, uint8_t b) { return a > b ? b : a; }
 
 static bool read_bit(BitstreamContext *bitstream) {
   uint8_t byte = bitstream->bits[bitstream->offset / 8];
@@ -85,9 +85,9 @@ static inline bool in_range(size_t x, const Range *range) {
 
 static bool any_variants_in_range(const uint8_t *variants, uint8_t count,
                                   const Range *range) {
-  int max_v = 0;
+  uint8_t max_v = 0;
   for (uint8_t i = 0; i < count; i++)
-    max_v = max(max_v, variants[i]);
+    max_v = max_u8(max_v, variants[i]);
   return range->lo < max_v;
 }
 
@@ -176,7 +176,8 @@ static void choose_palette(const Arguments *args, BitstreamContext *bitstream,
   decompress_palette(bitstream, color_context, palette_max, palettes,
                      palette_count);
   bool shiny = rand() % args->denominator < args->numerator;
-  memcpy(palette, palettes[shiny], sizeof(palettes[0]));
+  memcpy(palette, palettes[min_u8(shiny, palette_count - 1)],
+         sizeof(palettes[0]));
 }
 
 static void decompress_image(uint8_t *buf, uint8_t w, uint8_t h, uint8_t d,
@@ -212,7 +213,7 @@ static void decompress_image(uint8_t *buf, uint8_t w, uint8_t h, uint8_t d,
 static uint8_t palette_max(uint8_t *image, uint8_t w, uint8_t h) {
   uint8_t res = 0;
   for (size_t i = 0; i < w * h; i++)
-    res = max(res, image[i]);
+    res = max_u8(res, image[i]);
   return res;
 }
 
@@ -378,10 +379,14 @@ static struct option options[] = {
 };
 
 static void init_args(Arguments *args, int argc, char *argv[]) {
-  for (size_t i = 0; i < RANGE_ARGS; i++)
-    init_range(&args->id + i);
   args->numerator = SHINY_NUMERATOR;
   args->denominator = SHINY_DENOMINATOR;
+  init_range(&args->id);
+  init_range(&args->sheet);
+  init_range(&args->variants);
+  init_range(&args->frame);
+  init_range(&args->width);
+  init_range(&args->height);
   args->test = false;
   while (true) {
     switch (getopt_long(argc, argv, "i:s:v:f:W:H:n:d:th", options, NULL)) {
