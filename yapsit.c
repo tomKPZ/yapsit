@@ -91,68 +91,67 @@ static bool any_variants_in_range(const uint8_t *variants, uint8_t count,
   return range->lo < max_v;
 }
 
+static bool sheet_and_frame_in_range(const Arguments *args,
+                                     const SpriteContext *context) {
+  for (uint8_t s = 0; s < sprites.groups[context->gid]; s++) {
+    uint8_t sheet = context->sheet + s;
+    if (in_range(sheet, &args->sheet) &&
+        args->frame.lo < sprites.frames[sheet]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static uint32_t image_bitlen(const Sprite *sprite) {
   uint16_t bitlen = sprite->bitlen_h * 256 + sprite->bitlen_l;
   return bitlen < LARGE_LENS_COUNT ? sprites.large_lens[bitlen] : bitlen;
 }
 
-static const Sprite *choose_sprite(const Arguments *args, size_t *offset_out,
-                                   uint8_t *z_out, uint8_t *palette_count_out) {
-  // TODO: Clean up this mess.
+static bool choose_sprite(const Arguments *args, SpriteContext *out) {
+  memset(out, 0, sizeof(SpriteContext));
   size_t n = 0;
-  const Sprite *sprite = NULL;
-  size_t offset = 0;
-  const Sprite *image = sprites.images;
-  uint8_t sheet = 0;
-  const uint8_t *variants = sprites.variants;
-  size_t sprite_gid;
-  uint8_t sprite_sheet;
-  const uint8_t *sprite_variants;
-  for (size_t gid = 0; gid < GROUP_COUNT; gid++) {
-    bool sheet_in_range = false;
-    bool frame_in_range = false;
-    for (uint8_t s = 0; s < sprites.groups[gid]; s++) {
-      sheet_in_range |= in_range(sheet + s, &args->sheet);
-      frame_in_range |= args->frame.lo < sprites.frames[sheet + s];
-    }
-    for (size_t id = 0; id < sprites.limits[gid];
-         id++, offset += image_bitlen(image), image++) {
-      if (sheet_in_range && frame_in_range && in_range(id, &args->id) &&
-          in_range(image->w - 1, &args->width) &&
-          in_range(image->h - 1, &args->height) &&
-          any_variants_in_range(variants, sprites.groups[gid],
+  SpriteContext context;
+  memset(&context, 0, sizeof(SpriteContext));
+  context.sprite = sprites.images;
+  context.variants = sprites.variants;
+  for (context.gid = 0; context.gid < GROUP_COUNT; context.gid++) {
+    const bool sf_in_range = sheet_and_frame_in_range(args, &context);
+    for (uint16_t id = 0; id < sprites.limits[context.gid]; id++) {
+      if (sf_in_range && in_range(id, &args->id) &&
+          in_range(context.sprite->w - 1, &args->width) &&
+          in_range(context.sprite->h - 1, &args->height) &&
+          any_variants_in_range(context.variants, sprites.groups[context.gid],
                                 &args->variants) &&
           rand() % ++n == 0) {
-        sprite = image;
-        *offset_out = offset;
-        *palette_count_out = sprites.palette_counts[gid];
-        sprite_gid = gid;
-        sprite_sheet = sheet;
-        sprite_variants = variants;
+        memcpy(out, &context, sizeof(SpriteContext));
       }
-      variants += sprites.groups[gid];
+      context.variants += sprites.groups[context.gid];
+      context.offset += image_bitlen(context.sprite);
+      context.sprite++;
     }
-    sheet += sprites.groups[gid];
+    context.sheet += sprites.groups[context.gid];
   }
-  if (!sprite)
-    return NULL;
+  if (!out->sprite)
+    return false;
 
   n = 0;
-  image = NULL;
-  for (size_t g = 0, z = 0; g < sprites.groups[sprite_gid];
-       g++, sprite_variants++, sprite_sheet++) {
-    for (size_t v = 0; v < *sprite_variants; v++) {
-      for (uint8_t f = 0; f < sprites.frames[sprite_sheet]; f++, z++) {
-        if (in_range(sprite_sheet, &args->sheet) &&
+  bool success = false;
+  uint8_t z = 0;
+  for (size_t g = 0; g < sprites.groups[out->gid]; g++) {
+    for (size_t v = 0; v < out->variants[g]; v++) {
+      for (uint8_t f = 0; f < sprites.frames[out->sheet + g]; f++, z++) {
+        if (in_range(out->sheet + g, &args->sheet) &&
             in_range(v, &args->variants) && in_range(f, &args->frame) &&
             rand() % ++n == 0) {
-          *z_out = z;
-          image = sprite;
+          out->z = z;
+          success = true;
         }
       }
     }
   }
-  return image;
+  assert(z == out->sprite->d);
+  return success;
 }
 
 static void decompress_palette(BitstreamContext *bitstream,
@@ -466,25 +465,22 @@ int main(int argc, char *argv[]) {
   } else {
     srand(time(NULL) ^ getpid());
 
-    size_t offset;
-    uint8_t z;
-    uint8_t palette_count;
-    const Sprite *sprite = choose_sprite(&args, &offset, &z, &palette_count);
-    if (sprite == NULL)
+    SpriteContext s;
+    if (!choose_sprite(&args, &s))
       return EXIT_FAILURE;
-    uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
-    bitstream.offset += offset;
+    uint8_t w = s.sprite->w, h = s.sprite->h, d = s.sprite->d;
+    bitstream.offset += s.offset;
 
     decompress_image(image, w, h, d, &bitstream, contexts);
 
     uint8_t palette[16][3];
-    for (size_t p = 0; p <= z; p++) {
+    for (size_t p = 0; p <= s.z; p++) {
       choose_palette(&args, &bitstream, &color_context,
                      palette_max(image + w * h * p, w, h), palette,
-                     palette_count);
+                     sprites.palette_counts[s.gid]);
     }
 
-    draw(w, h, image + w * h * z, palette);
+    draw(w, h, image + w * h * s.z, palette);
   }
 
   return EXIT_SUCCESS;
