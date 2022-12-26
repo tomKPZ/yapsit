@@ -272,6 +272,7 @@ static void reset() {
 
 static void draw(uint8_t w, uint8_t h, const uint8_t *image,
                  const uint8_t palette[16][3]) {
+  // TODO: trim image.
   char buf[DRAW_BUFFER];
   out = buf;
   for (size_t y = 0; y < h; y += 2) {
