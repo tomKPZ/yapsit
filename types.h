@@ -62,6 +62,15 @@ typedef struct {
   bool test;
 } Arguments;
 
+typedef struct {
+  const Sprite *sprite;
+  const uint8_t *variants;
+  size_t offset;
+  uint8_t gid;
+  uint8_t sheet;
+  uint8_t z;
+} SpriteContext;
+
 extern const Sprites sprites;
 
 #endif
