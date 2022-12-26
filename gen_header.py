@@ -15,7 +15,7 @@ SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
 MONTAGES = set(
     [
-        "ruby",
+        # "ruby",
         # "firered",
         # "emerald",
         # "diamond",
