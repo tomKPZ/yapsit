@@ -1,7 +1,9 @@
-sprites.c
-constants.h
-yapsit
 *.bak
+.cache
+build
+constants.h
+sprites.c
+yapsit
 
 CMakeLists.txt.user
 CMakeCache.txt
