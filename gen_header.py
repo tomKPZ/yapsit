@@ -58,7 +58,6 @@ def lz3d(data, size, data2bits):
     n = len(data) + 1
     dp = ffibuilder.new("int[%d][7]" % n, [[0] + [-1] * 6] * n)
     window = 10000 if len(data) > 80000 else len(data)
-    window = 100
     lib.lz3d(*size, window, data, data2bits, dp)  # type: ignore
 
     node = 0
@@ -265,7 +264,8 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
 
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
-    for _ in range(1):
+    prev_bitstream_len = 0
+    while True:
         pool = Pool()
         perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
         _, streams = zip(
@@ -327,8 +327,12 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
             bitstreams.extend(bitstream)
         assert min_bitlen >= len(large_lens)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000))
-    ffibuilder.dlclose(lib)
-    return Compressed(sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz)  # type: ignore
+        if len(bitstreams) == prev_bitstream_len:
+            ffibuilder.dlclose(lib)
+            return Compressed(
+                sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz
+            )
+        prev_bitstream_len = len(bitstreams)
 
 
 def output_bits(bits, f):
