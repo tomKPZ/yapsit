@@ -29,7 +29,7 @@ MONTAGES = set(
 FRAMES = [1, 2, 2, 1, 1, 2]
 PALETTE_COUNTS = [2, 2, 2, 1, 1, 2]
 
-Huffman = namedtuple("Huffman", ["form", "perm", "data2bits"])
+Huffman = namedtuple("Huffman", ["bits", "data2bits"])
 Images = namedtuple(
     "Images",
     ["images", "variants", "limits", "groups", "ids", "frames", "palette_counts"],
@@ -69,7 +69,11 @@ def lz3d(data, size, data2bits):
     return ans
 
 
-def huffman_encode(data):
+def int_to_bits(x, size):
+    return [(x & (1 << i)) >> i for i in reversed(range(size))]
+
+
+def huffman_encode(data: list[int]):
     counter = Counter(data)
     heap = list(zip(counter.values(), counter.keys()))
     heapify(heap)
@@ -80,19 +84,19 @@ def huffman_encode(data):
         heappush(heap, (c1 + c2, len(nodes)))
         nodes.append((-1, v1, v2))
 
+    bitlen = max(x.bit_length() for x in counter)
     data2bits = {}
     acc = []
-    form = []
-    perm = []
+    bits = int_to_bits(bitlen - 1, 3)
 
     def dfs(node: tuple[int, int, int]):
         val = node[0]
         if val >= 0:
-            form.append(1)
+            bits.append(1)
             data2bits[val] = acc[::]
-            perm.append(val)
+            bits.extend(int_to_bits(val, bitlen))
             return
-        form.append(0)
+        bits.append(0)
         _, l, r = node
         acc.append(0)
         dfs(nodes[l])
@@ -103,7 +107,7 @@ def huffman_encode(data):
 
     dfs(nodes[-1])
     huffman_info(counter, data2bits)
-    return Huffman(form, perm, data2bits)
+    return Huffman(bits, data2bits)
 
 
 def huffman_info(counter, data2bits):
@@ -327,18 +331,6 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     return Compressed(sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz)  # type: ignore
 
 
-def int_to_bits(x, size):
-    return [(x & (1 << i)) >> i for i in reversed(range(size))]
-
-
-def huffman_bits(form, perm):
-    bitlen = max(x.bit_length() for x in perm)
-    bits = int_to_bits(bitlen - 1, 3) + list(form)
-    for x in perm:
-        bits.extend(int_to_bits(x, bitlen))
-    return bits
-
-
 def output_bits(bits, f):
     while len(bits) % 8 != 0:
         bits.append(0)
@@ -374,9 +366,9 @@ def output(compressed: Compressed, images: Images):
         for size, bitlen in zip(compressed.sizes, compressed.bitlens):
             print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)), file=f)
         print("},", file=f)
-        bitstream = huffman_bits(compressed.colors.form, compressed.colors.perm)
+        bitstream = compressed.colors.bits
         for field in compressed.lz:
-            bitstream += huffman_bits(field.form, field.perm)
+            bitstream += field.bits
         bytecount = output_bits(bitstream + compressed.bitstream, f)
         print("};", file=f)
 
