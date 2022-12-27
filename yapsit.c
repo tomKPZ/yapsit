@@ -34,33 +34,22 @@ static uint8_t read_int(BitstreamContext *bitstream, size_t length) {
 }
 
 static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
-                           uint8_t i, size_t *j, HuffmanBranch *parent) {
+                           uint8_t i, uint8_t bitlen, HuffmanBranch *parent) {
   parent->is_leaf = read_bit(bits);
   if (parent->is_leaf) {
-    // TODO: interlace form and perm to avoid shuffling.
-    parent->value = (*j)++;
+    parent->value = read_int(bits, bitlen);
     return 0;
   }
   parent->value = i;
-  uint8_t l = decode_node(bits, nodes, i + 1, j, &nodes[i].l);
-  uint8_t r = decode_node(bits, nodes, i + 1 + l, j, &nodes[i].r);
+  uint8_t l = decode_node(bits, nodes, i + 1, bitlen, &nodes[i].l);
+  uint8_t r = decode_node(bits, nodes, i + 1 + l, bitlen, &nodes[i].r);
   return l + r + 1;
 }
 
 static void huffman_init(HuffmanContext *context, BitstreamContext *bitstream) {
   uint8_t bitlen = read_int(bitstream, 3) + 1;
   HuffmanBranch dummy;
-  size_t perm_len = 0;
-  decode_node(bitstream, context->nodes, 0, &perm_len, &dummy);
-  uint8_t perm[256];
-  for (size_t i = 0; i < perm_len; i++)
-    perm[i] = read_int(bitstream, bitlen);
-  for (HuffmanBranch *branch = &context->nodes[0].l; perm_len; branch++) {
-    if (branch->is_leaf) {
-      branch->value = perm[branch->value];
-      perm_len--;
-    }
-  }
+  decode_node(bitstream, context->nodes, 0, bitlen, &dummy);
 }
 
 static uint8_t huffman_decode(const HuffmanContext *context,
