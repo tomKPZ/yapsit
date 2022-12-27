@@ -261,11 +261,26 @@ static void reset() {
 
 static void draw(uint8_t w, uint8_t h, const uint8_t *image,
                  const uint8_t palette[16][3]) {
-  // TODO: trim image.
-  char buf[DRAW_BUFFER];
-  out = buf;
+  // Trim the image.
+  uint8_t x_l = 255;
+  uint8_t y_l = 255;
+  uint8_t x_h = 0;
+  uint8_t y_h = 0;
   for (size_t y = 0; y < h; y += 2) {
     for (size_t x = 0; x < w; x++) {
+      if (image[y * w + x]) {
+        x_l = min_u8(x_l, x);
+        x_h = max_u8(x_h, x);
+        y_l = min_u8(y_l, y);
+        y_h = max_u8(y_h, y);
+      }
+    }
+  }
+
+  char buf[DRAW_BUFFER];
+  out = buf;
+  for (size_t y = y_l; y <= y_h; y += 2) {
+    for (size_t x = x_l; x <= x_h; x++) {
       uint8_t u = image[y * w + x];
       uint8_t l = 0;
       if (y + 1 < h)
