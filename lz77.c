@@ -1,19 +1,35 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
-
-// TODO : multiple representations of(dz, dy, dx) for the same delta.
-static int nbits(const int output[5], const uint8_t data2bits[5][256]) {
-  int sum = 0;
-  for (size_t i = 0; i < 5; i++) {
-    if (output[i] >= 0)
-      sum += data2bits[i][output[i]];
-  }
-  return sum;
-}
 
 static int min(int a, int b) { return a < b ? a : b; }
 static int max(int a, int b) { return a > b ? a : b; }
+
+static int nbits(uint8_t w, int out[5], const uint8_t cost[5][256]) {
+  const uint8_t *dxc = cost[2], *dyc = cost[1];
+  int dx = out[2], dy = out[1];
+  if (dx >= 0 && dy >= 0) {
+    int c = dxc[dx] + dyc[dy];
+    if (dx - w >= 0 && dy + 1 <= 255 && dxc[dx - w] + dyc[dy + 1] < c) {
+      dx -= w;
+      dy += 1;
+    } else if (dx + w <= 255 && dy - 1 >= 0 && dxc[dx + w] + dyc[dy - 1] < c) {
+      dx += w;
+      dy -= 1;
+    }
+  }
+  out[2] = dx;
+  out[1] = dy;
+
+  int sum = 0;
+  for (size_t i = 0; i < 5; i++) {
+    if (out[i] >= 0)
+      sum += cost[i][out[i]];
+  }
+  return sum;
+}
 
 void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
           const uint8_t data[], const uint8_t data2bits[5][256], int dp[][7]) {
@@ -28,7 +44,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         -1,
         data[i],
     };
-    ans[0] += nbits(&ans[2], data2bits);
+    ans[0] += nbits(width, &ans[2], data2bits);
     for (int j = max(0, i - window); j < i; j++) {
       int upper = min(n - i + j, j + 256);
       for (int k = j; k < upper; k++) {
@@ -53,7 +69,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
             i != j ? runlen - 1 : -1,
             i + runlen < n ? data[i + runlen] : -1,
         };
-        node[0] += nbits(&node[2], data2bits);
+        node[0] += nbits(width, &node[2], data2bits);
         if (node[0] <= ans[0])
           memcpy(ans, node, 7 * sizeof(int));
       }
