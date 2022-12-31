@@ -15,15 +15,15 @@ SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
 MONTAGES = set(
     [
-        # "ruby",
-        # "firered",
-        # "emerald",
-        # "diamond",
-        # "platinum",
-        # "heartgold",
-        # "black",
+        "ruby",
+        "firered",
+        "emerald",
+        "diamond",
+        "platinum",
+        "heartgold",
+        "black",
         "old",
-        # "icons",
+        "icons",
     ]
 )
 FRAMES = [1, 2, 2, 1, 1, 2]
@@ -153,7 +153,6 @@ def read_images():
     for (w, h), group in metadata:
         # TODO: simplify
         spritess = defaultdict(list)
-        variantss = defaultdict(list)
         palette_count = set()
         for name, variants_id, variant_counts in group:
             frames.append(FRAMES[variants_id])
@@ -162,7 +161,6 @@ def read_images():
             montage = PIL.Image.open(filename).convert("RGBA")
             row = 0
             for i, variant_count in enumerate(variant_counts):
-                variantss[i].append(variant_count)
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
                         data = []
@@ -172,8 +170,8 @@ def read_images():
                                 yp = h * row + y
                                 data.append(
                                     tuple(
-                                        pixel(montage, w * i + xp, yp)
-                                        for i in range(PALETTE_COUNTS[variants_id])
+                                        pixel(montage, w * j + xp, yp)
+                                        for j in range(PALETTE_COUNTS[variants_id])
                                     )
                                 )
 
@@ -184,7 +182,7 @@ def read_images():
                     row += 1
         assert len(palette_count) == 1
         palette_counts.append(next(iter(palette_count)))
-        variants.extend(sum(variantss.values(), start=[]))
+        variants.extend(x for l in zip(*(vc for _, _, vc in group)) for x in l)
         for sprites in spritess.values():
             xl = yl = 255
             xh = yh = 0
