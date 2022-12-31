@@ -218,17 +218,18 @@ def read_images():
             for i, variant_count in enumerate(variant_counts):
                 for _ in range(variant_count):
                     for frame in range(FRAMES[variants_id]):
-                        data = []
-                        for y in range(h):
-                            for x in range(w):
-                                xp = 2 * frame * w + x
-                                yp = h * row + y
-                                data.append(
-                                    tuple(
-                                        pixel(montage, w * j + xp, yp)
-                                        for j in range(PALETTE_COUNTS[variants_id])
-                                    )
+                        data = [
+                            tuple(
+                                pixel(
+                                    montage,
+                                    w * j + 2 * frame * w + x,
+                                    h * row + y,
                                 )
+                                for j in range(PALETTE_COUNTS[variants_id])
+                            )
+                            for y in range(h)
+                            for x in range(w)
+                        ]
 
                         palette = create_palette(data)
                         sprite = [palette[colors] for colors in data]
@@ -251,6 +252,26 @@ def read_images():
 def compress_image(d2bs, input):
     i, (size, uncompressed, _) = input
     return i, lz3d(uncompressed, size, d2bs)
+
+
+def optimize_compressed_palettes(palettess, streams, images):
+    for palettes, stream, image in zip(palettess, streams, images):
+        counter = Counter(s[-1] for s in stream)
+        counter[0] = len(stream)
+        del counter[-1]
+        perm = sorted(counter.keys(), key=lambda key: -counter[key])
+        while len(perm) < 16:
+            perm.append(len(perm))
+        inv = dict(zip(perm, range(16)))
+        for i, (p, c) in enumerate(palettes):
+            palettes[i] = [p[j] for j in inv], [inv[v] for v in c]
+        for l in stream:
+            l[-1] = inv.get(l[-1], -1)
+        image[:] = [inv[v] for v in image]
+    return [
+        [x for p, m in ps for pair in p[1 : max(m) + 1] for c in pair for x in c]
+        for ps in palettess
+    ]
 
 
 def compress_images(uncompressed):
@@ -279,24 +300,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
             *sorted(pool.map(partial(compress_image, d2bs), perm, chunksize=1))
         )
 
-        # Repaletteize based on value stream.
-        for palettes, stream, image in zip(palettess, streams, images):
-            counter = Counter(s[-1] for s in stream)
-            counter[0] = len(stream)
-            del counter[-1]
-            perm = sorted(counter.keys(), key=lambda key: -counter[key])
-            while len(perm) < 16:
-                perm.append(len(perm))
-            inv = dict(zip(perm, range(16)))
-            for i, (p, c) in enumerate(palettes):
-                palettes[i] = [p[j] for j in inv], [inv[v] for v in c]
-            for l in stream:
-                l[-1] = inv.get(l[-1], -1)
-            image[:] = [inv[v] for v in image]
-        palettes = [
-            [x for p, m in ps for pair in p[1 : max(m) + 1] for c in pair for x in c]
-            for ps in palettess
-        ]
+        palettes = optimize_compressed_palettes(palettess, streams, images)
         colors = huffman_encode([c for palette in palettes for c in palette])
 
         all_streams = [[] for _ in range(LZ77_LEN)]
@@ -308,11 +312,6 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
         lz = tuple(pool.map(huffman_encode, all_streams, chunksize=1))
         pool.close()
 
-        max_bits = [0] * 255
-        d2bs = [
-            [len(huffman.data2bits.get(d, max_bits)) for d in range(256)]
-            for huffman in lz
-        ]
         bitstreams = []
         bitlens = []
         large_lens = []
@@ -340,6 +339,12 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
                 sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz
             )
         prev_bitstream_len = len(bitstreams)
+
+        max_bits = [0] * 255
+        d2bs = [
+            [len(huffman.data2bits.get(d, max_bits)) for d in range(256)]
+            for huffman in lz
+        ]
 
 
 def output_bits(bits, f):
