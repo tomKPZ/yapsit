@@ -144,6 +144,24 @@ def get_metadata():
     return [(size, group) for size, group in metadata if group]
 
 
+def trim_sprites(sprites, w, h):
+    xl = yl = 255
+    xh = yh = 0
+    for sprite, _ in sprites:
+        for y in range(h):
+            for x in range(w):
+                if sprite[y * w + x]:
+                    xl = min(xl, x)
+                    yl = min(yl, y)
+                    xh = max(xh, x)
+                    yh = max(yh, y)
+    for sprite, _ in sprites:
+        sprite[:] = [
+            sprite[y * w + x] for y in range(yl, yh + 1) for x in range(xl, xh + 1)
+        ]
+    return (xh - xl + 1, yh - yl + 1, len(sprites))
+
+
 def read_images():
     images = []
     variants = []
@@ -184,22 +202,7 @@ def read_images():
         palette_counts.append(next(iter(palette_count)))
         variants.extend(x for l in zip(*(vc for _, _, vc in group)) for x in l)
         for sprites in spritess.values():
-            xl = yl = 255
-            xh = yh = 0
-            for sprite, _ in sprites:
-                for y in range(h):
-                    for x in range(w):
-                        if sprite[y * w + x]:
-                            xl = min(xl, x)
-                            yl = min(yl, y)
-                            xh = max(xh, x)
-                            yh = max(yh, y)
-            for sprite, _ in sprites:
-                sprite[:] = [
-                    sprite[y * w + x]
-                    for y in range(yl, yh + 1)
-                    for x in range(xl, xh + 1)
-                ]
+            size = trim_sprites(sprites, w, h)
             n = len(sprites)
             edges = []
             for i in range(n):
@@ -233,7 +236,6 @@ def read_images():
                 for key, c in palette.items():
                     p[inv[c]] = key
                 palettes.append((p, list(set(image) - {-1})))
-            size = (xh - xl + 1, yh - yl + 1, n)
             images.append((size, image_stream, palettes))
     limits = [len(group[0][2]) for _, group in metadata]
     groups = [len(group) for _, group in metadata]
