@@ -14,7 +14,7 @@ from cffi import FFI
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
-MONTAGES = set(
+SHEETS = set(
     [
         "ruby",
         "firered",
@@ -28,7 +28,7 @@ MONTAGES = set(
     ]
 )
 FRAMES = [1, 2, 2, 1, 1, 2]
-PALETTE_COUNTS = [2, 2, 2, 1, 1, 2]
+PALETTES = [2, 2, 2, 1, 1, 2]
 
 Huffman = namedtuple("Huffman", ["bits", "data2bits"])
 Images = namedtuple(
@@ -53,12 +53,6 @@ def create_palette(zipped_sprites):
     for _, color in sorted(zip(counter.values(), counter.keys())):
         palette[color] = len(palette)
     return palette
-
-
-def paletteize(data):
-    palette = create_palette(data)
-    sprite = [palette[colors] for colors in data]
-    return sprite, palette
 
 
 def lz3d(data, size, data2bits):
@@ -138,14 +132,9 @@ def huffman_info(counter, data2bits):
     )
 
 
-def pixel(montage, x, y):
-    r, g, b, a = montage.getpixel((x, y))
-    return (r // 8, g // 8, b // 8) if a else (-1, -1, -1)
-
-
 def get_metadata():
     metadata = [
-        (size, [g for g in group if g[0] in MONTAGES])
+        (size, [g for g in group if g[0] in SHEETS])
         for size, group in load(open(path.join(ASSETS_DIR, "metadata.json")))
     ]
     return [(size, group) for size, group in metadata if group]
@@ -206,27 +195,42 @@ def optimize_sprites_palettes(sprites):
     return image_stream, palettes
 
 
+def pixel(sheet, x, y):
+    r, g, b, a = sheet.getpixel((x, y))
+    return (r // 8, g // 8, b // 8) if a else (-1, -1, -1)
+
+
+def read_sprite(sheet, row, col, w, h):
+    return [
+        pixel(
+            sheet,
+            w * col + x,
+            h * row + y,
+        )
+        for y in range(h)
+        for x in range(w)
+    ]
+
+
+def read_sprite_with_palettes(sheet, row, col, w, h, palettes):
+    sprites = [read_sprite(sheet, row, col + p, w, h) for p in range(palettes)]
+    pixels = list(zip(*sprites))
+    palette = create_palette(pixels)
+    sprite = [palette[colors] for colors in pixels]
+    return sprite, palette
+
+
 def read_sprite_sheet(w, h, metadata):
     name, vid, variants = metadata
+    palettes = PALETTES[vid]
 
     filename = path.join(ASSETS_DIR, name + ".png")
     sheet = PIL.Image.open(filename).convert("RGBA")
 
     return [
         [
-            paletteize(
-                [
-                    tuple(
-                        pixel(
-                            sheet,
-                            w * k + 2 * frame * w + x,
-                            h * (row - vs + v) + y,
-                        )
-                        for k in range(PALETTE_COUNTS[vid])
-                    )
-                    for y in range(h)
-                    for x in range(w)
-                ]
+            read_sprite_with_palettes(
+                sheet, row - vs + v, palettes * frame, w, h, palettes
             )
             for v in range(vs)
             for frame in range(FRAMES[vid])
@@ -244,7 +248,7 @@ def read_images():
     for (w, h), group in metadata:
         frames.extend(FRAMES[v] for _, v, _ in group)
 
-        palette_count = set(PALETTE_COUNTS[v] for _, v, _ in group)
+        palette_count = set(PALETTES[v] for _, v, _ in group)
         assert len(palette_count) == 1
         palette_counts.append(next(iter(palette_count)))
 
