@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-from collections import Counter, defaultdict, namedtuple
+from collections import Counter, namedtuple
 from functools import partial
 from heapq import heapify, heappop, heappush
+from itertools import accumulate
 from json import load
 from math import ceil, log2
 from multiprocessing import Pool
@@ -52,6 +53,12 @@ def create_palette(zipped_sprites):
     for _, color in sorted(zip(counter.values(), counter.keys())):
         palette[color] = len(palette)
     return palette
+
+
+def paletteize(data):
+    palette = create_palette(data)
+    sprite = [palette[colors] for colors in data]
+    return sprite, palette
 
 
 def lz3d(data, size, data2bits):
@@ -199,6 +206,35 @@ def optimize_sprites_palettes(sprites):
     return image_stream, palettes
 
 
+def read_sprite_sheet(w, h, metadata):
+    name, vid, variants = metadata
+
+    filename = path.join(ASSETS_DIR, name + ".png")
+    sheet = PIL.Image.open(filename).convert("RGBA")
+
+    return [
+        [
+            paletteize(
+                [
+                    tuple(
+                        pixel(
+                            sheet,
+                            w * k + 2 * frame * w + x,
+                            h * (row - vs + v) + y,
+                        )
+                        for k in range(PALETTE_COUNTS[vid])
+                    )
+                    for y in range(h)
+                    for x in range(w)
+                ]
+            )
+            for v in range(vs)
+            for frame in range(FRAMES[vid])
+        ]
+        for vs, row in zip(variants, accumulate(variants))
+    ]
+
+
 def read_images():
     images = []
     variants = []
@@ -206,40 +242,16 @@ def read_images():
     palette_counts = []
     metadata = get_metadata()
     for (w, h), group in metadata:
-        # TODO: simplify
-        spritess = defaultdict(list)
-        palette_count = set()
-        for name, variants_id, variant_counts in group:
-            frames.append(FRAMES[variants_id])
-            palette_count.add(PALETTE_COUNTS[variants_id])
-            filename = path.join(ASSETS_DIR, name + ".png")
-            montage = PIL.Image.open(filename).convert("RGBA")
-            row = 0
-            for i, variant_count in enumerate(variant_counts):
-                for _ in range(variant_count):
-                    for frame in range(FRAMES[variants_id]):
-                        data = [
-                            tuple(
-                                pixel(
-                                    montage,
-                                    w * j + 2 * frame * w + x,
-                                    h * row + y,
-                                )
-                                for j in range(PALETTE_COUNTS[variants_id])
-                            )
-                            for y in range(h)
-                            for x in range(w)
-                        ]
+        frames.extend(FRAMES[v] for _, v, _ in group)
 
-                        palette = create_palette(data)
-                        sprite = [palette[colors] for colors in data]
-                        spritess[i].append((sprite, palette))
-
-                    row += 1
+        palette_count = set(PALETTE_COUNTS[v] for _, v, _ in group)
         assert len(palette_count) == 1
         palette_counts.append(next(iter(palette_count)))
+
         variants.extend(x for lst in zip(*(vc for _, _, vc in group)) for x in lst)
-        for sprites in spritess.values():
+
+        for sprites in zip(*[read_sprite_sheet(w, h, g) for g in group]):
+            sprites = sum(sprites, start=[])
             size = trim_sprites(sprites, w, h)
             image_stream, palettes = optimize_sprites_palettes(sprites)
             images.append((size, image_stream, palettes))
