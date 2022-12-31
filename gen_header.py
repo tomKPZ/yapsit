@@ -87,7 +87,7 @@ def huffman_encode(data: list[int]):
 
     bitlen = max(x.bit_length() for x in counter)
     data2bits = {}
-    acc = []
+    acc: list[int] = []
     bits = int_to_bits(bitlen - 1, 3)
 
     def dfs(node: tuple[int, int, int]):
@@ -162,6 +162,43 @@ def trim_sprites(sprites, w, h):
     return (xh - xl + 1, yh - yl + 1, len(sprites))
 
 
+def optimize_sprites_palettes(sprites):
+    n = len(sprites)
+    edges = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            for (c1, c2), count in (
+                {(i, j): 0 for i in range(16) for j in range(16)}
+                | Counter(zip(sprites[i][0], sprites[j][0]))
+            ).items():
+                edges.append((-count, i, j, c1, c2))
+    edges.sort()
+    covered_from = set()
+    covered_to = set()
+    msf = []  # maximum spanning forest
+    for _, i, j, c1, c2 in edges:
+        if (i, j, c1) in covered_from or (i, j, c2) in covered_to:
+            continue
+        covered_from.add((i, j, c1))
+        covered_to.add((i, j, c2))
+        msf.append((i, j, c1, c2))
+    perms = [list(range(16))] + [[16] * 16 for _ in range(n - 1)]
+    for i, j, c1, c2 in sorted(msf):
+        perms[j][c2] = perms[i][c1]
+    image_stream = []
+    palettes = []
+    for perm, (sprite, palette) in zip(perms, sprites):
+        inv = dict(zip(perm, range(16)))
+        image = [inv[c] for c in sprite]
+        image_stream.extend(image)
+        p = list(palette.keys())
+        p += [((0, 0, 0),) * len(next(iter(palette)))] * (16 - len(p))
+        for key, c in palette.items():
+            p[inv[c]] = key
+        palettes.append((p, list(set(image) - {-1})))
+    return image_stream, palettes
+
+
 def read_images():
     images = []
     variants = []
@@ -200,42 +237,10 @@ def read_images():
                     row += 1
         assert len(palette_count) == 1
         palette_counts.append(next(iter(palette_count)))
-        variants.extend(x for l in zip(*(vc for _, _, vc in group)) for x in l)
+        variants.extend(x for lst in zip(*(vc for _, _, vc in group)) for x in lst)
         for sprites in spritess.values():
             size = trim_sprites(sprites, w, h)
-            n = len(sprites)
-            edges = []
-            for i in range(n):
-                for j in range(i + 1, n):
-                    for (c1, c2), count in (
-                        {(i, j): 0 for i in range(16) for j in range(16)}
-                        | Counter(zip(sprites[i][0], sprites[j][0]))
-                    ).items():
-                        edges.append((-count, i, j, c1, c2))
-            edges.sort()
-            covered_from = set()
-            covered_to = set()
-            msf = []
-            for _, i, j, c1, c2 in edges:
-                if (i, j, c1) in covered_from or (i, j, c2) in covered_to:
-                    continue
-                covered_from.add((i, j, c1))
-                covered_to.add((i, j, c2))
-                msf.append((i, j, c1, c2))
-            perms = [list(range(16))] + [[16] * 16 for _ in range(n - 1)]
-            for i, j, c1, c2 in sorted(msf):
-                perms[j][c2] = perms[i][c1]
-            image_stream = []
-            palettes = []
-            for perm, (sprite, palette) in zip(perms, sprites):
-                inv = dict(zip(perm, range(16)))
-                image = [inv[c] for c in sprite]
-                image_stream.extend(image)
-                p = list(palette.keys())
-                p += [((0, 0, 0),) * palette_counts[-1]] * (16 - len(p))
-                for key, c in palette.items():
-                    p[inv[c]] = key
-                palettes.append((p, list(set(image) - {-1})))
+            image_stream, palettes = optimize_sprites_palettes(sprites)
             images.append((size, image_stream, palettes))
     limits = [len(group[0][2]) for _, group in metadata]
     groups = [len(group) for _, group in metadata]
