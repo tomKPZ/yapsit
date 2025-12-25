@@ -9,15 +9,14 @@ endif()
 set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -Wshadow")
 set(CMAKE_C_FLAGS_DEBUG "-g")
 set(CMAKE_C_FLAGS_RELEASE "-O2")
-set(CMAKE_C_COMPILER "clang")
-
-add_library(lz77 SHARED lz77.c)
 
 add_custom_command(
-  OUTPUT sprites.c constants.h
-  COMMAND pypy3 "${CMAKE_CURRENT_SOURCE_DIR}/gen_header.py"
-  DEPENDS gen_header.py lz77)
+  OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/sprites.c"
+         "${CMAKE_CURRENT_SOURCE_DIR}/constants.h"
+  COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/gen_header.py"
+  DEPENDS gen_header.py)
 
 add_executable(yapsit yapsit.c  "${CMAKE_CURRENT_SOURCE_DIR}/sprites.c")
 set_target_properties(yapsit PROPERTIES LINK_FLAGS_RELEASE -s)
+target_link_libraries(yapsit zstd)
 install(TARGETS yapsit DESTINATION bin)

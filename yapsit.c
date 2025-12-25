@@ -8,6 +8,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <zstd.h>
 
 #include "constants.h"
 #include "types.h"
@@ -16,56 +17,71 @@
 #define SHINY_DENOMINATOR 16
 #define DRAW_BUFFER 44294
 
+Sprites sprites;
+static uint8_t *sprites_blob;
+
 static uint8_t max_u8(uint8_t a, uint8_t b) { return a > b ? a : b; }
 static uint8_t min_u8(uint8_t a, uint8_t b) { return a > b ? b : a; }
 
-static bool read_bit(BitstreamContext *bitstream) {
-  uint8_t byte = bitstream->bits[bitstream->offset / 8];
-  bool bit = byte & (1 << (7 - bitstream->offset % 8));
-  bitstream->offset += 1;
-  return !!bit;
+static uint8_t *align_ptr(uint8_t *ptr, size_t alignment) {
+  uintptr_t p = (uintptr_t)ptr;
+  uintptr_t aligned = (p + alignment - 1) & ~(alignment - 1);
+  return (uint8_t *)aligned;
 }
 
-static uint8_t read_int(BitstreamContext *bitstream, size_t length) {
-  uint8_t v = 0;
-  for (size_t i = 0; i < length; i++)
-    v = 2 * v + read_bit(bitstream);
-  return v;
-}
+static void init_sprites(void) {
+  if (sprites_blob)
+    return;
 
-static uint8_t decode_node(BitstreamContext *bits, HuffmanNode *nodes,
-                           uint8_t i, uint8_t bitlen, HuffmanBranch *parent) {
-  parent->is_leaf = read_bit(bits);
-  if (parent->is_leaf) {
-    parent->value = read_int(bits, bitlen);
-    return 0;
+  sprites_blob = malloc(SPRITES_RAW_LEN);
+  if (!sprites_blob) {
+    perror("malloc");
+    exit(EXIT_FAILURE);
   }
-  parent->value = i;
-  uint8_t l = decode_node(bits, nodes, i + 1, bitlen, &nodes[i].l);
-  uint8_t r = decode_node(bits, nodes, i + 1 + l, bitlen, &nodes[i].r);
-  return l + r + 1;
-}
 
-static void huffman_init(HuffmanContext *context, BitstreamContext *bitstream) {
-  uint8_t bitlen = read_int(bitstream, 3) + 1;
-  HuffmanBranch dummy;
-  decode_node(bitstream, context->nodes, 0, bitlen, &dummy);
-}
-
-static uint8_t huffman_decode(const HuffmanContext *context,
-                              BitstreamContext *bitstream) {
-  const HuffmanNode *node = context->nodes;
-  while (true) {
-    if (read_bit(bitstream)) {
-      if (node->r.is_leaf)
-        return node->r.value;
-      node = &context->nodes[node->r.value];
-    } else {
-      if (node->l.is_leaf)
-        return node->l.value;
-      node = &context->nodes[node->l.value];
-    }
+  ZSTD_DCtx *dctx = ZSTD_createDCtx();
+  if (!dctx) {
+    fputs("Failed to create zstd context\n", stderr);
+    exit(EXIT_FAILURE);
   }
+  size_t decoded = ZSTD_decompress_usingDict(
+      dctx, sprites_blob, SPRITES_RAW_LEN, sprites_zstd_data,
+      sprites_zstd_data_len, sprites_zstd_dict, sprites_zstd_dict_len);
+  ZSTD_freeDCtx(dctx);
+  if (ZSTD_isError(decoded) || decoded != SPRITES_RAW_LEN) {
+    fprintf(stderr, "Failed to decompress sprites: %s\n",
+            ZSTD_getErrorName(decoded));
+    exit(EXIT_FAILURE);
+  }
+
+  uint8_t *cursor = sprites_blob;
+  cursor = align_ptr(cursor, sizeof(uint16_t));
+  sprites.limits = (uint16_t *)cursor;
+  cursor += sizeof(uint16_t) * GROUP_COUNT;
+
+  sprites.variants = cursor;
+  cursor += sizeof(uint8_t) * VARIANT_COUNT;
+
+  sprites.groups = cursor;
+  cursor += sizeof(uint8_t) * GROUP_COUNT;
+
+  sprites.frames = cursor;
+  cursor += sizeof(uint8_t) * SHEET_COUNT;
+
+  sprites.palette_counts = cursor;
+  cursor += sizeof(uint8_t) * GROUP_COUNT;
+
+  cursor = align_ptr(cursor, sizeof(uint32_t));
+  sprites.images = (Sprite *)cursor;
+  cursor += sizeof(Sprite) * SPRITE_COUNT;
+
+  sprites.image_data = cursor;
+  cursor += SPRITES_IMAGE_DATA_LEN;
+
+  sprites.palette_data = cursor;
+  cursor += SPRITES_PALETTE_DATA_LEN;
+
+  assert(cursor <= sprites_blob + SPRITES_RAW_LEN);
 }
 
 static inline bool in_range(size_t x, const Range *range) {
@@ -92,11 +108,6 @@ static bool sheet_and_frame_in_range(const Arguments *args,
   return false;
 }
 
-static uint32_t image_bitlen(const Sprite *sprite) {
-  uint16_t bitlen = sprite->bitlen_h * 256 + sprite->bitlen_l;
-  return bitlen < LARGE_LENS_COUNT ? sprites.large_lens[bitlen] : bitlen;
-}
-
 static bool choose_sprite(const Arguments *args, SpriteContext *out) {
   memset(out, 0, sizeof(SpriteContext));
   size_t n = 0;
@@ -116,7 +127,6 @@ static bool choose_sprite(const Arguments *args, SpriteContext *out) {
         memcpy(out, &context, sizeof(SpriteContext));
       }
       context.variants += sprites.groups[context.gid];
-      context.offset += image_bitlen(context.sprite);
       context.sprite++;
     }
     context.sheet += sprites.groups[context.gid];
@@ -143,67 +153,17 @@ static bool choose_sprite(const Arguments *args, SpriteContext *out) {
   return success;
 }
 
-static void decompress_palette(BitstreamContext *bitstream,
-                               HuffmanContext *color_context,
-                               uint8_t palette_max,
-                               uint8_t palettes[MAX_PALETTES][16][3],
-                               uint8_t palette_count) {
-  for (size_t i = 1; i <= palette_max; i++) {
-    for (size_t k = 0; k < palette_count; k++) {
-      for (size_t j = 0; j < 3; j++) {
-        palettes[k][i][j] =
-            huffman_decode(color_context, bitstream) * 8 * 255 / 248;
-      }
-    }
-  }
+static const uint8_t *sprite_frame(const Sprite *sprite, size_t frame) {
+  size_t frame_size = (size_t)sprite->w * sprite->h;
+  return sprites.image_data + sprite->image_offset + frame * frame_size;
 }
 
-static void choose_palette(const Arguments *args, BitstreamContext *bitstream,
-                           HuffmanContext *color_context, uint8_t palette_max,
-                           uint8_t palette[16][3], uint8_t palette_count) {
-  uint8_t palettes[2][16][3];
-  decompress_palette(bitstream, color_context, palette_max, palettes,
-                     palette_count);
-  bool shiny = rand() % args->denominator < args->numerator;
-  memcpy(palette, palettes[min_u8(shiny, palette_count - 1)],
-         sizeof(palettes[0]));
-}
-
-static void decompress_image(uint8_t *buf, uint8_t w, uint8_t h, uint8_t d,
-                             BitstreamContext *bitstream,
-                             const HuffmanContext contexts[5]) {
-  size_t size = w * h * d;
-  assert(size <= DECODE_BUFFER);
-  uint8_t *image = buf;
-  while (buf < image + size) {
-    size_t offset = buf - image;
-    uint8_t z = offset / (w * h);
-    uint8_t y = offset % (w * h) / w;
-    uint8_t x = offset % w;
-
-    uint8_t dz = z ? huffman_decode(&contexts[0], bitstream) : 0;
-    uint8_t dy = y || z ? huffman_decode(&contexts[1], bitstream) : 128;
-    uint8_t dx = x || y || z ? huffman_decode(&contexts[2], bitstream) : 128;
-    int8_t dxi = dx - 128;
-    int8_t dyi = dy - 128;
-    uint16_t delta = w * h * dz + w * dyi + dxi;
-    size_t runlen = delta ? 1 + huffman_decode(&contexts[3], bitstream) : 0;
-
-    // Manual copy instead of memcpy/memmove to handle overlapping ranges.
-    for (size_t i = 0; i < runlen; i++)
-      buf[i] = buf[i - delta];
-    buf += runlen;
-
-    if (buf < image + size)
-      *(buf++) = huffman_decode(&contexts[4], bitstream);
-  }
-}
-
-static uint8_t palette_max(uint8_t *image, uint8_t w, uint8_t h) {
-  uint8_t res = 0;
-  for (size_t i = 0; i < w * h; i++)
-    res = max_u8(res, image[i]);
-  return res;
+static const uint8_t *sprite_palette(const Sprite *sprite, size_t frame,
+                                     size_t palette_variant,
+                                     uint8_t palette_count) {
+  size_t palette_stride = 16 * 3;
+  size_t offset = (frame * palette_count + palette_variant) * palette_stride;
+  return sprites.palette_data + sprite->palette_offset + offset;
 }
 
 static char *out;
@@ -446,14 +406,7 @@ static void init_args(Arguments *args, int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   Arguments args;
   init_args(&args, argc, argv);
-
-  BitstreamContext bitstream = {sprites.bitstream, 0};
-  HuffmanContext color_context;
-  huffman_init(&color_context, &bitstream);
-  HuffmanContext contexts[5];
-  for (size_t i = 0; i < sizeof(contexts) / sizeof(contexts[0]); i++)
-    huffman_init(&contexts[i], &bitstream);
-  uint8_t image[DECODE_BUFFER];
+  init_sprites();
 
   if (args.test) {
     const Sprite *sprite = sprites.images;
@@ -461,14 +414,15 @@ int main(int argc, char *argv[]) {
       const uint8_t palette_count = sprites.palette_counts[gid];
       for (size_t id = 0; id < sprites.limits[gid]; id++, sprite++) {
         uint8_t w = sprite->w, h = sprite->h, d = sprite->d;
-        decompress_image(image, w, h, d, &bitstream, contexts);
-        uint8_t palettes[MAX_PALETTES][16][3];
         for (size_t z = 0; z < d; z++) {
-          uint8_t *frame = image + w * h * z;
-          decompress_palette(&bitstream, &color_context,
-                             palette_max(frame, w, h), palettes, palette_count);
-          for (int j = 0; j < palette_count; j++)
-            draw(w, h, frame, palettes[j]);
+          const uint8_t *frame = sprite_frame(sprite, z);
+          for (uint8_t j = 0; j < palette_count; j++) {
+            uint8_t palette[16][3];
+            const uint8_t *palette_bytes =
+                sprite_palette(sprite, z, j, palette_count);
+            memcpy(palette, palette_bytes, sizeof(palette));
+            draw(w, h, frame, palette);
+          }
         }
       }
     }
@@ -478,19 +432,16 @@ int main(int argc, char *argv[]) {
     SpriteContext s;
     if (!choose_sprite(&args, &s))
       return EXIT_FAILURE;
-    uint8_t w = s.sprite->w, h = s.sprite->h, d = s.sprite->d;
-    bitstream.offset += s.offset;
-
-    decompress_image(image, w, h, d, &bitstream, contexts);
-
+    uint8_t w = s.sprite->w, h = s.sprite->h;
+    const uint8_t *frame = sprite_frame(s.sprite, s.z);
     uint8_t palette[16][3];
-    for (size_t p = 0; p <= s.z; p++) {
-      choose_palette(&args, &bitstream, &color_context,
-                     palette_max(image + w * h * p, w, h), palette,
-                     sprites.palette_counts[s.gid]);
-    }
-
-    draw(w, h, image + w * h * s.z, palette);
+    uint8_t palette_count = sprites.palette_counts[s.gid];
+    bool shiny = rand() % args.denominator < args.numerator;
+    uint8_t palette_variant = min_u8(shiny, palette_count - 1);
+    const uint8_t *palette_bytes =
+        sprite_palette(s.sprite, s.z, palette_variant, palette_count);
+    memcpy(palette, palette_bytes, sizeof(palette));
+    draw(w, h, frame, palette);
   }
 
   return EXIT_SUCCESS;
