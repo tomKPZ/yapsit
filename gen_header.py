@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 
 from collections import Counter, namedtuple
-from functools import partial
-from heapq import heapify, heappop, heappush
 from itertools import accumulate
 from json import load
-from math import ceil, log2
-from multiprocessing import Pool
-from os import environ, path
+from os import path
+from typing import Iterable
+
+import ctypes
 
 import PIL.Image
-from cffi import FFI
 
 SCRIPT_DIR = path.dirname(path.realpath(__file__))
 ASSETS_DIR = path.join(SCRIPT_DIR, "assets")
@@ -30,14 +28,12 @@ SHEETS = set(
 FRAMES = [1, 2, 2, 1, 1, 2]
 PALETTES = [2, 2, 2, 1, 1, 2]
 
-Huffman = namedtuple("Huffman", ["bits", "data2bits"])
 Images = namedtuple(
     "Images",
     ["images", "variants", "limits", "groups", "ids", "frames", "palette_counts"],
 )
 Compressed = namedtuple(
-    "Compressed",
-    ["sizes", "colors", "bitstream", "bitlens", "large_lens", "decode_buffer", "lz"],
+    "Compressed", ["sizes", "offsets", "compressed", "dictionary", "decode_buffer"]
 )
 
 
@@ -55,81 +51,7 @@ def create_palette(zipped_sprites):
     return palette
 
 
-def lz3d(data, size, data2bits):
-    n = len(data) + 1
-    dp = ffibuilder.new("int[%d][7]" % n, [[0] + [-1] * 6] * n)
-    window = 10000 if len(data) > 80000 else len(data)
-    if "FAST_COMPRESS" in environ:
-        window = 100
-    lib.lz3d(*size, window, data, data2bits, dp)  # type: ignore
-
-    node = 0
-    ans = []
-    while node < n - 1:
-        ans.append(list(dp[node])[2:])
-        node = dp[node][1]
-    return ans
-
-
-def int_to_bits(x, size):
-    return [(x & (1 << i)) >> i for i in reversed(range(size))]
-
-
-def huffman_encode(data: list[int]):
-    counter = Counter(data)
-    heap = list(zip(counter.values(), counter.keys()))
-    heapify(heap)
-    nodes: list[tuple[int, int, int]] = [(i, -1, -1) for i in range(256)]
-    while len(heap) > 1:
-        c1, v1 = heappop(heap)
-        c2, v2 = heappop(heap)
-        heappush(heap, (c1 + c2, len(nodes)))
-        nodes.append((-1, v1, v2))
-
-    bitlen = max(x.bit_length() for x in counter)
-    data2bits = {}
-    acc: list[int] = []
-    bits = int_to_bits(bitlen - 1, 3)
-
-    def dfs(node: tuple[int, int, int]):
-        val = node[0]
-        if val >= 0:
-            bits.append(1)
-            data2bits[val] = acc[::]
-            bits.extend(int_to_bits(val, bitlen))
-            return
-        bits.append(0)
-        _, l, r = node
-        acc.append(0)
-        dfs(nodes[l])
-        acc.pop()
-        acc.append(1)
-        dfs(nodes[r])
-        acc.pop()
-
-    dfs(nodes[-1])
-    huffman_info(counter, data2bits)
-    return Huffman(bits, data2bits)
-
-
-def huffman_info(counter, data2bits):
-    total = sum(counter.values())
-    if not total:
-        return
-    shannon = total * log2(total)
-    bitlen = 0
-    for x, count in counter.items():
-        shannon -= count * log2(count)
-        bitlen += count * len(data2bits[x])
-    print(
-        "%d/%d (+%.1fB) (+%.2f%%)"
-        % (
-            bitlen,
-            ceil(shannon),
-            (bitlen - shannon) / 8,
-            100 * (bitlen / shannon - 1),
-        )
-    )
+DICT_SIZE = 65536
 
 
 def get_metadata():
@@ -265,116 +187,137 @@ def read_images():
     return Images(images, variants, limits, groups, ids, frames, palette_counts)
 
 
-def compress_image(d2bs, input):
-    i, (size, uncompressed, _) = input
-    return i, lz3d(uncompressed, size, d2bs)
+def load_zstd():
+    lib = ctypes.CDLL("libzstd.so")
+    lib.ZDICT_trainFromBuffer.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_size_t),
+        ctypes.c_uint,
+    ]
+    lib.ZDICT_trainFromBuffer.restype = ctypes.c_size_t
+    lib.ZDICT_isError.argtypes = [ctypes.c_size_t]
+    lib.ZDICT_isError.restype = ctypes.c_uint
+    lib.ZSTD_getErrorName.argtypes = [ctypes.c_size_t]
+    lib.ZSTD_getErrorName.restype = ctypes.c_char_p
+    lib.ZSTD_createCCtx.argtypes = []
+    lib.ZSTD_createCCtx.restype = ctypes.c_void_p
+    lib.ZSTD_freeCCtx.argtypes = [ctypes.c_void_p]
+    lib.ZSTD_freeCCtx.restype = ctypes.c_size_t
+    lib.ZSTD_compress_usingDict.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_int,
+    ]
+    lib.ZSTD_compress_usingDict.restype = ctypes.c_size_t
+    lib.ZSTD_compressBound.argtypes = [ctypes.c_size_t]
+    lib.ZSTD_compressBound.restype = ctypes.c_size_t
+    lib.ZSTD_isError.argtypes = [ctypes.c_size_t]
+    lib.ZSTD_isError.restype = ctypes.c_uint
+    return lib
 
 
-def optimize_compressed_palettes(palettess, streams, images):
-    for palettes, stream, image in zip(palettess, streams, images):
-        counter = Counter(s[-1] for s in stream)
-        counter[0] = len(stream)
-        del counter[-1]
-        perm = sorted(counter.keys(), key=lambda key: -counter[key])
-        while len(perm) < 16:
-            perm.append(len(perm))
-        inv = dict(zip(perm, range(16)))
-        for i, (p, c) in enumerate(palettes):
-            palettes[i] = [p[j] for j in inv], [inv[v] for v in c]
-        for l in stream:
-            l[-1] = inv.get(l[-1], -1)
-        image[:] = [inv[v] for v in image]
-    return [
-        [x for p, m in ps for pair in p[1 : max(m) + 1] for c in pair for x in c]
-        for ps in palettess
+def scale_color(channel: int) -> int:
+    if channel < 0:
+        return 0
+    return channel * 8 * 255 // 248
+
+
+def group_palette_bytes(palette_entry, palette_count: int) -> Iterable[int]:
+    for palette_index in range(16):
+        for palette_id in range(palette_count):
+            r, g, b = palette_entry[palette_index][palette_id]
+            yield scale_color(r)
+            yield scale_color(g)
+            yield scale_color(b)
+
+
+def group_bytes(size, image_stream, palettes, palette_count):
+    image_bytes = bytes(image_stream)
+    palette_bytes = bytearray()
+    for palette_entry, _ in palettes:
+        palette_bytes.extend(group_palette_bytes(palette_entry, palette_count))
+    return image_bytes + palette_bytes
+
+
+def group_palette_counts(limits, palette_counts):
+    gid = 0
+    remaining = limits[0]
+    for _ in range(sum(limits)):
+        while remaining == 0:
+            gid += 1
+            remaining = limits[gid]
+        remaining -= 1
+        yield palette_counts[gid]
+
+
+def compress_images(uncompressed, limits, palette_counts):
+    sizes = [size for size, _, _ in uncompressed]
+    palette_count_iter = group_palette_counts(limits, palette_counts)
+    raw_groups = [
+        group_bytes(size, image_stream, palettes, palette_count)
+        for (size, image_stream, palettes), palette_count in zip(
+            uncompressed, palette_count_iter
+        )
     ]
 
-
-def compress_images(uncompressed):
-    sizes = [size for size, _, _ in uncompressed]
-    images = [image for _, image, _ in uncompressed]
-    palettess = [palettes for _, _, palettes in uncompressed]
-    decode_buffer = max(w * h * d for w, h, d in sizes)
-
-    global ffibuilder, lib
-    ffibuilder = FFI()
-    ffibuilder.cdef(
-        """
-void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
-          const uint8_t data[], const uint8_t data2bits[5][256], int dp[][7]);
-"""
-    )
-    lib = ffibuilder.dlopen(path.join(SCRIPT_DIR, "liblz77.so"))
-
-    LZ77_LEN = 5
-    d2bs = [[1] * 256] * LZ77_LEN
-    prev_bitstream_len = 0
-    while True:
-        pool = Pool()
-        perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
-        _, streams = zip(
-            *sorted(pool.map(partial(compress_image, d2bs), perm, chunksize=1))
+    decode_buffer = 0
+    for (w, h, d), palette_count in zip(sizes, group_palette_counts(limits, palette_counts)):
+        decode_buffer = max(
+            decode_buffer, w * h * d + d * palette_count * 16 * 3
         )
 
-        palettes = optimize_compressed_palettes(palettess, streams, images)
-        colors = huffman_encode([c for palette in palettes for c in palette])
+    lib = load_zstd()
+    dict_buffer = ctypes.create_string_buffer(DICT_SIZE)
 
-        all_streams = [[] for _ in range(LZ77_LEN)]
-        for stream in streams:
-            for t in stream:
-                for i, x in enumerate(t):
-                    if x >= 0:
-                        all_streams[i].append(x)
-        lz = tuple(pool.map(huffman_encode, all_streams, chunksize=1))
-        pool.close()
+    samples_buffer = ctypes.create_string_buffer(b"".join(raw_groups))
+    sizes_arr = (ctypes.c_size_t * len(raw_groups))(
+        *[len(sample) for sample in raw_groups]
+    )
+    dict_size = lib.ZDICT_trainFromBuffer(
+        dict_buffer,
+        DICT_SIZE,
+        samples_buffer,
+        sizes_arr,
+        len(raw_groups),
+    )
+    if lib.ZDICT_isError(dict_size):
+        raise RuntimeError(lib.ZSTD_getErrorName(dict_size).decode("utf-8"))
+    dictionary = dict_buffer.raw[:dict_size]
+    dict_data = ctypes.create_string_buffer(dictionary)
 
-        bitstreams = []
-        bitlens = []
-        large_lens = []
-        min_bitlen = 0xFFFF
-        for stream, palette in zip(streams, palettes):
-            bitstream = []
-            for t in stream:
-                for huffman, x in zip(lz, t):
-                    if x >= 0:
-                        bitstream.extend(huffman.data2bits[x])
-            for c in palette:
-                bitstream.extend(colors.data2bits[c])
-            if len(bitstream) > 0xFFFF:
-                bitlens.append(len(large_lens))
-                large_lens.append(len(bitstream))
-            else:
-                bitlens.append(len(bitstream))
-                min_bitlen = min(min_bitlen, bitlens[-1])
-            bitstreams.extend(bitstream)
-        assert min_bitlen >= len(large_lens)
-        print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000))
-        if "FAST_COMPRESS" in environ or len(bitstreams) == prev_bitstream_len:
-            ffibuilder.dlclose(lib)
-            return Compressed(
-                sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz
-            )
-        prev_bitstream_len = len(bitstreams)
+    ctx = lib.ZSTD_createCCtx()
+    compressed = bytearray()
+    offsets = []
+    for sample in raw_groups:
+        offsets.append((len(compressed), len(sample)))
+        bound = lib.ZSTD_compressBound(len(sample))
+        out_buffer = ctypes.create_string_buffer(bound)
+        sample_buffer = ctypes.create_string_buffer(sample)
+        result = lib.ZSTD_compress_usingDict(
+            ctx,
+            out_buffer,
+            bound,
+            sample_buffer,
+            len(sample),
+            dict_data,
+            len(dictionary),
+            3,
+        )
+        if lib.ZSTD_isError(result):
+            raise RuntimeError(lib.ZSTD_getErrorName(result).decode("utf-8"))
+        compressed.extend(out_buffer.raw[:result])
+        offsets[-1] = (offsets[-1][0], result)
+    lib.ZSTD_freeCCtx(ctx)
 
-        max_bits = [0] * 255
-        d2bs = [
-            [len(huffman.data2bits.get(d, max_bits)) for d in range(256)]
-            for huffman in lz
-        ]
-
-
-def output_bits(bits, f):
-    while len(bits) % 8 != 0:
-        bits.append(0)
-    print("{", file=f)
-    for i in range(0, len(bits), 8):
-        encoded = 0
-        for bit in bits[i : i + 8]:
-            encoded *= 2
-            encoded += bit
-        print("0x%02X," % encoded, end="", file=f)
-    print("},", file=f)
-    return len(bits) // 8
+    print("%.3fKB" % (len(compressed) / 1000))
+    return Compressed(sizes, offsets, compressed, dictionary, decode_buffer)
 
 
 def output_array(name, arr, f):
@@ -388,37 +331,36 @@ def output(compressed: Compressed, images: Images):
     with open(path.join(SCRIPT_DIR, "sprites.c"), "w") as f:
         print('#include "types.h"', file=f)
         print("const Sprites sprites = {", file=f)
-        output_array("large_lens", compressed.large_lens, f)
         output_array("limits", images.limits, f)
         output_array("variants", images.variants, f)
         output_array("groups", images.groups, f)
         output_array("frames", images.frames, f)
         output_array("palette_counts", images.palette_counts, f)
         print("{", file=f)
-        for size, bitlen in zip(compressed.sizes, compressed.bitlens):
-            print("{%d,%d,%d,%d,%d}," % (*size, *divmod(bitlen, 256)), file=f)
+        for size in compressed.sizes:
+            print("{%d,%d,%d}," % size, file=f)
         print("},", file=f)
-        bitstream = compressed.colors.bits
-        for field in compressed.lz:
-            bitstream += field.bits
-        bytecount = output_bits(bitstream + compressed.bitstream, f)
+        output_array("offsets", [o for o, _ in compressed.offsets], f)
+        output_array("sizes", [s for _, s in compressed.offsets], f)
+        output_array("dictionary", list(compressed.dictionary), f)
+        output_array("compressed", list(compressed.compressed), f)
         print("};", file=f)
 
     with open(path.join(SCRIPT_DIR, "constants.h"), "w") as f:
         print("#define SHEET_COUNT %d" % len(images.frames), file=f)
         print("#define GROUP_COUNT %d" % len(images.groups), file=f)
         print("#define VARIANT_COUNT %d" % len(images.variants), file=f)
-        print("#define BITSTREAM_LEN %d" % bytecount, file=f)
         print("#define SPRITE_COUNT %d" % len(images.images), file=f)
         print("#define ID_COUNT %d" % images.ids, file=f)
-        print("#define LARGE_LENS_COUNT %d" % len(compressed.large_lens), file=f)
-        print("#define DECODE_BUFFER %d" % compressed.decode_buffer, file=f)
+        print("#define DICT_LEN %d" % len(compressed.dictionary), file=f)
+        print("#define COMPRESSED_LEN %d" % len(compressed.compressed), file=f)
+        print("#define DECOMPRESS_BUFFER %d" % compressed.decode_buffer, file=f)
         print("#define MAX_PALETTES %d" % max(images.palette_counts), file=f)
 
 
 def main():
     images = read_images()
-    compressed = compress_images(images.images)
+    compressed = compress_images(images.images, images.limits, images.palette_counts)
     output(compressed, images)
 
 
