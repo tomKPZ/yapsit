@@ -8,41 +8,22 @@
 #include "constants.h"
 
 typedef struct {
-  const uint8_t *bits;
-  size_t offset;
-} BitstreamContext;
-
-typedef struct {
-  bool is_leaf;
-  uint8_t value;
-} HuffmanBranch;
-
-typedef struct {
-  HuffmanBranch l;
-  HuffmanBranch r;
-} HuffmanNode;
-
-typedef struct {
-  HuffmanNode nodes[256];
-} HuffmanContext;
-
-typedef struct {
   uint8_t w;
   uint8_t h;
   uint8_t d;
-  uint8_t bitlen_h;
-  uint8_t bitlen_l;
+  uint32_t image_offset;
+  uint32_t palette_offset;
 } Sprite;
 
 typedef struct {
-  uint32_t large_lens[LARGE_LENS_COUNT];
-  uint16_t limits[GROUP_COUNT];
-  uint8_t variants[VARIANT_COUNT];
-  uint8_t groups[GROUP_COUNT];
-  uint8_t frames[SHEET_COUNT];
-  uint8_t palette_counts[GROUP_COUNT];
-  Sprite images[SPRITE_COUNT];
-  uint8_t bitstream[BITSTREAM_LEN];
+  const uint16_t *limits;
+  const uint8_t *variants;
+  const uint8_t *groups;
+  const uint8_t *frames;
+  const uint8_t *palette_counts;
+  const Sprite *images;
+  const uint8_t *image_data;
+  const uint8_t *palette_data;
 } Sprites;
 
 typedef struct {
@@ -65,12 +46,15 @@ typedef struct {
 typedef struct {
   const Sprite *sprite;
   const uint8_t *variants;
-  size_t offset;
   uint8_t gid;
   uint8_t sheet;
   uint8_t z;
 } SpriteContext;
 
-extern const Sprites sprites;
+extern Sprites sprites;
+extern const uint8_t sprites_zstd_dict[];
+extern const size_t sprites_zstd_dict_len;
+extern const uint8_t sprites_zstd_data[];
+extern const size_t sprites_zstd_data_len;
 
 #endif
