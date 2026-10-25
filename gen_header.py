@@ -61,6 +61,9 @@ def lz3d(data, size, data2bits):
     window = 10000 if len(data) > 80000 else len(data)
     if "FAST_COMPRESS" in environ:
         window = 100
+    window = int(environ.get("COMPRESS_WINDOW", window))
+    if window < 1:
+        raise ValueError("COMPRESS_WINDOW must be positive")
     lib.lz3d(*size, window, data, data2bits, dp)  # type: ignore
 
     node = 0
@@ -196,8 +199,11 @@ def optimize_sprites_palettes(sprites):
 
 
 def pixel(sheet, x, y):
-    r, g, b, a = sheet.getpixel((x, y))
-    return (r // 8, g // 8, b // 8) if a else (-1, -1, -1)
+    data, width = sheet
+    offset = 4 * (y * width + x)
+    if not data[offset + 3]:
+        return (-1, -1, -1)
+    return (data[offset] // 8, data[offset + 1] // 8, data[offset + 2] // 8)
 
 
 def read_sprite(sheet, row, col, w, h):
@@ -225,7 +231,10 @@ def read_sprite_sheet(w, h, metadata):
     palettes = PALETTES[vid]
 
     filename = path.join(ASSETS_DIR, name + ".png")
-    sheet = PIL.Image.open(filename).convert("RGBA")
+    with PIL.Image.open(filename) as source:
+        image = source.convert("RGBA")
+        # Reading packed bytes avoids a Pillow call through PyPy's C API per pixel.
+        sheet = (image.tobytes(), image.width)
 
     return [
         [
@@ -309,7 +318,14 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     LZ77_LEN = 5
     d2bs = [[1] * 256] * LZ77_LEN
     prev_bitstream_len = 0
+    max_passes = int(
+        environ.get("COMPRESS_PASSES", 1 if "FAST_COMPRESS" in environ else 0)
+    )
+    if max_passes < 0:
+        raise ValueError("COMPRESS_PASSES must be nonnegative (0 means unlimited)")
+    passes = 0
     while True:
+        passes += 1
         pool = Pool()
         perm = sorted(enumerate(uncompressed), key=lambda x: -len(x[1][1]))
         _, streams = zip(
@@ -349,7 +365,7 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
             bitstreams.extend(bitstream)
         assert min_bitlen >= len(large_lens)
         print("%.3fKB" % ((len(bitstreams) + 7) // 8 / 1000))
-        if "FAST_COMPRESS" in environ or len(bitstreams) == prev_bitstream_len:
+        if passes == max_passes or len(bitstreams) == prev_bitstream_len:
             ffibuilder.dlclose(lib)
             return Compressed(
                 sizes, colors, bitstreams, bitlens, large_lens, decode_buffer, lz

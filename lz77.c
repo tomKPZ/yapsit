@@ -46,30 +46,44 @@ void lz3d(uint8_t width, uint8_t height, uint8_t depth, unsigned int window,
     };
     ans[0] += nbits(width, &ans[2], data2bits);
     for (int j = max(0, i - window); j < i; j++) {
+      if (data[j] != data[i])
+        continue;
+      int y1 = j / width;
+      int x1 = j % width;
+      int z1 = y1 / height;
+      y1 %= height;
+      int y2 = i / width;
+      int x2 = i % width;
+      int z2 = y2 / height;
+      y2 %= height;
+      int offsets[5] = {
+          z2 ? z2 - z1 : -1,
+          z2 || y2 ? y2 - y1 + 128 : -1,
+          z2 || y2 || x2 ? x2 - x1 + 128 : -1,
+          -1,
+          -1,
+      };
+      // The reference coordinates and their cost are constant for this match.
+      int offset_cost = nbits(width, offsets, data2bits);
       int upper = min(n - i + j, j + 256);
       for (int k = j; k < upper; k++) {
         if (data[k] != data[k + i - j])
           break;
-        int y1 = j / width;
-        int x1 = j % width;
-        int z1 = y1 / height;
-        y1 %= height;
-        int y2 = i / width;
-        int x2 = i % width;
-        int z2 = y2 / height;
-        y2 %= height;
         int runlen = k - j + 1;
-        int index = i + runlen + 1;
+        // A match ending at the final pixel has no following literal.
+        int index = min(n, i + runlen + 1);
         int node[7] = {
             dp[index][0],
             index,
-            z2 ? z2 - z1 : -1,
-            z2 || y2 ? y2 - y1 + 128 : -1,
-            z2 || y2 || x2 ? x2 - x1 + 128 : -1,
+            offsets[0],
+            offsets[1],
+            offsets[2],
             i != j ? runlen - 1 : -1,
             i + runlen < n ? data[i + runlen] : -1,
         };
-        node[0] += nbits(width, &node[2], data2bits);
+        node[0] += offset_cost + data2bits[3][runlen - 1];
+        if (i + runlen < n)
+          node[0] += data2bits[4][data[i + runlen]];
         if (node[0] <= ans[0])
           memcpy(ans, node, 7 * sizeof(int));
       }

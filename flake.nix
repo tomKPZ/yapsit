@@ -39,8 +39,9 @@
             # The generator writes beside its source and loads liblz77.so there.
             dontUseCmakeBuildDir = true;
 
-            # Keep sprite generation fast; this only reduces compression ratio.
-            FAST_COMPRESS = "1";
+            # Balance build time and compression with a bounded search and two passes.
+            COMPRESS_WINDOW = "512";
+            COMPRESS_PASSES = "2";
 
             doInstallCheck = true;
             installCheckPhase = ''
