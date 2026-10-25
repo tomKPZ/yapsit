@@ -1,6 +1,8 @@
 *.bak
 .cache
 build
+/result
+/result-*
 constants.h
 sprites.c
 yapsit
